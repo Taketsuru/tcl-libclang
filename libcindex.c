@@ -41,6 +41,12 @@ enum {
 
 //------------------------------------------------------------------ utilities
 
+static Tcl_Obj *cindexNone;        // = "-none"
+static Tcl_Obj *cindexFile;
+static Tcl_Obj *cindexLine;
+static Tcl_Obj *cindexColumn;
+static Tcl_Obj *cindexOffset;
+
 struct cindexSubcommand
 {
    const char  *name;
@@ -89,7 +95,7 @@ struct cindexEnumLabels
    const char  *names[];
 };
 
-static int cindexGetEnumLabel(Tcl_Interp                *interp,
+static int cindexGetEnumLabel(Tcl_Interp              *interp,
                               struct cindexEnumLabels *labels,
                               int                      value)
 {
@@ -139,17 +145,28 @@ struct cindexBitMask
 {
    const char *name;
    unsigned    mask;
+   Tcl_Obj    *nameObj;
 };
 
-static int cindexParseBitMask(Tcl_Interp                 *interp,
-                              int                         noptions1,
-                              const char                 *options1[],
-                              int                         noptions2,
-                              const struct cindexBitMask *options2,
-                              const char                 *none,
-                              int                         objc,
-                              Tcl_Obj *const              objv[],
-                              unsigned                   *output)
+static Tcl_Obj *cindexBitMaskNameObj(struct cindexBitMask *bitMask)
+{
+   Tcl_Obj *result = bitMask->nameObj;
+
+   if (result == NULL) {
+      result = Tcl_NewStringObj(bitMask->name, -1);
+      bitMask->nameObj = result;
+      Tcl_IncrRefCount(result);
+   }
+
+   return result;
+}
+
+static int cindexParseBitMask(Tcl_Interp           *interp,
+                              struct cindexBitMask *options,
+                              Tcl_Obj              *none,
+                              int                   objc,
+                              Tcl_Obj *const        objv[],
+                              unsigned             *output)
 {
    unsigned value = 0;
    for (int i = 1; i < objc; ++i) {
@@ -158,20 +175,16 @@ static int cindexParseBitMask(Tcl_Interp                 *interp,
 
       unsigned mask = 0;
 
-      if (none != NULL && strcmp(obj, none) == 0) {
+      if (none != NULL && strcmp(obj, Tcl_GetStringFromObj(none, NULL)) == 0) {
          continue;
       }
 
-      for (int j = 0; j < noptions1; ++j) {
-         if (strcmp(options1[j], obj) == 0) {
-            mask = 1U << j;
-            goto found;
-         }
-      }
-
-      for (int j = 0; j < noptions2; ++j) {
-         if (strcmp(options2[j].name, obj) == 0) {
-            mask = options2[j].mask;
+      for (int j = 0; options[j].name != NULL; ++j) {
+         if (strcmp(options[j].name, obj) == 0) {
+            mask = options[j].mask;
+            if (mask == 0) {
+               mask = 1U << j;
+            }
             goto found;
          }
       }
@@ -189,43 +202,53 @@ static int cindexParseBitMask(Tcl_Interp                 *interp,
    return TCL_OK;
 }
 
-static int cindexBitMaskToString(Tcl_Interp                 *interp,
-                                 int                         noptions1,
-                                 const char                 *options1[],
-                                 int                         noptions2,
-                                 const struct cindexBitMask *options2,
-                                 const char                 *none,
-                                 unsigned                    mask)
+static int cindexBitMaskToString(Tcl_Interp           *interp,
+                                 struct cindexBitMask *options,
+                                 Tcl_Obj              *none,
+                                 unsigned              mask)
 {
    if (mask == 0) {
       if (none != NULL) {
-         Tcl_SetObjResult(interp, Tcl_NewStringObj(none, -1));
+         Tcl_SetObjResult(interp, cindexNone);
       }
 
       return TCL_OK;
    }
 
    unsigned value = mask;
+   Tcl_Obj *result = Tcl_NewObj();
+   Tcl_SetObjResult(interp, result);
 
-   for (int i = 0; i < noptions2; ++i) {
-      if ((value & options2[i].mask) == options2[i].mask) {
-         value &= ~options2[i].mask;
-         Tcl_AppendElement(interp, options2[i].name);
+   int status = TCL_OK;
+   int i;
+   for (i = 0; options[i].name != NULL && status == TCL_OK; ++i) {
+      unsigned mask = options[i].mask;
+      if (mask == 0) {
+         continue;
+      }
+
+      if ((value & mask) == mask) {
+         value &= ~mask;
+         Tcl_Obj *nameObj = cindexBitMaskNameObj(&options[i]);
+         status = Tcl_ListObjAppendElement(interp, result, nameObj);
       }
    }
+   int n = i;
 
-   while (value != 0) {
+   while (value != 0 && status == TCL_OK) {
       int i = ffs(value) - 1;
-      if (noptions1 <= i) {
+      if (n <= i || options[i].mask != 0) {
          Tcl_SetObjResult(interp,
                           Tcl_ObjPrintf("unknown mask value: 0x%x", 1U << i));
-         return TCL_ERROR;
+         status = TCL_ERROR;
+         break;
       }
-      Tcl_AppendElement(interp, options1[i]);
+      Tcl_Obj *nameObj = cindexBitMaskNameObj(&options[i]);
+      status = Tcl_ListObjAppendElement(interp, result, nameObj);
       value &= ~(1U << i);
    }
 
-   return TCL_OK;
+   return status;
 }
 
 //------------------------------------------------------- child list operations
@@ -440,56 +463,37 @@ static int cindexValidateCursor(Tcl_Interp		*interp,
 
 //---------------------------------------------------- source location mapping
 
-static Tcl_Obj *cindexKeyObjFile;
-static Tcl_Obj *cindexKeyObjLine;
-static Tcl_Obj *cindexKeyObjColumn;
-static Tcl_Obj *cindexKeyObjOffset;
+static Tcl_Obj *fileNameCache[64];
 
-static void cindexInitializeKeyObjs(void)
+static unsigned long cindexFileNameHash(const char *str)
 {
-   if (cindexKeyObjFile != NULL) {
-      return;
+   unsigned long        hash = 0;
+   int                  c;
+   const unsigned char *cp = (const unsigned char *)str;
+
+   while ( (c = *cp++) ) {
+      hash = c + (hash << 6) + (hash << 16) - hash;
    }
 
-   cindexKeyObjFile   = Tcl_NewStringObj("file", -1);
-   cindexKeyObjLine   = Tcl_NewStringObj("line", -1);
-   cindexKeyObjColumn = Tcl_NewStringObj("column", -1);
-   cindexKeyObjOffset = Tcl_NewStringObj("offset", -1);
+   return hash;
 }
 
-static Tcl_Obj *cindexNewSourceLocationObj(CXSourceLocation location,
-                                           void (*proc)(CXSourceLocation,
-                                                        CXFile *,
-                                                        unsigned *,
-                                                        unsigned *,
-                                                        unsigned *))
+static Tcl_Obj *cindexNewFileNameObj(const char *filenameCstr)
 {
-   cindexInitializeKeyObjs();
+   int hash = cindexFileNameHash(filenameCstr)
+      % (sizeof fileNameCache / sizeof fileNameCache[0]);
 
-   CXFile   file;
-   unsigned line;
-   unsigned column;
-   unsigned offset;
+   Tcl_Obj *candidate = fileNameCache[hash];
+   if (candidate != NULL) {
+      if (strcmp(Tcl_GetStringFromObj(candidate, NULL), filenameCstr) == 0) {
+         return candidate;
+      }
+      Tcl_DecrRefCount(candidate);
+   }
 
-   proc(location, &file, &line, &column, &offset);
-
-   Tcl_Obj *result = Tcl_NewObj();
-   Tcl_AppendObjToObj(result, cindexKeyObjFile);
-
-   // XXX need to consider sharing tcl objects with the same file name
-   CXString cxFileName = clang_getFileName(file);
-   const char *filename = clang_getCString(cxFileName);
-   Tcl_AppendObjToObj(result, Tcl_NewStringObj(filename, -1));
-   clang_disposeString(cxFileName);
-
-   Tcl_AppendObjToObj(result, cindexKeyObjLine);
-   Tcl_AppendObjToObj(result, Tcl_NewLongObj(line));
-
-   Tcl_AppendObjToObj(result, cindexKeyObjColumn);
-   Tcl_AppendObjToObj(result, Tcl_NewLongObj(column));
-                      
-   Tcl_AppendObjToObj(result, cindexKeyObjOffset);
-   Tcl_AppendObjToObj(result, Tcl_NewLongObj(offset));
+   Tcl_Obj *result = Tcl_NewStringObj(filenameCstr, -1);
+   fileNameCache[hash] = result;
+   Tcl_IncrRefCount(result);
 
    return result;
 }
@@ -685,34 +689,24 @@ static int cindexIndexOptionsObjCmd(ClientData     clientData,
                                     int            objc,
                                     Tcl_Obj *const objv[])
 {
-   static const char *options1[] = {
-      "-threadBackgroundPriorityForIndexing",
-      "-threadBackgroundPriorityForEditing",
-   };
-   int noptions1 = sizeof options1 / sizeof options1[0];
-
-   static struct cindexBitMask options2[] = {
+   static struct cindexBitMask options[] = {
+      { "-threadBackgroundPriorityForIndexing" },
+      { "-threadBackgroundPriorityForEditing" },
       { "-threadBackgroundPriorityForAll",
-        CXGlobalOpt_ThreadBackgroundPriorityForAll }
+        CXGlobalOpt_ThreadBackgroundPriorityForAll },
+      { NULL }
    };
-   int noptions2 = sizeof options2 / sizeof options2[0];
 
    struct cindexIndexInfo *info = (struct cindexIndexInfo *)clientData;
 
    if (objc == 1) {
       unsigned value = clang_CXIndex_getGlobalOptions(info->index);
-
-      return cindexBitMaskToString(interp,
-                                   noptions1, options1,
-                                   noptions2, options2,
-                                   "-none", value);
+      return cindexBitMaskToString(interp, options, cindexNone, value);
    }
 
    unsigned value = 0;
-   int status = cindexParseBitMask(interp,
-                                   noptions1, options1,
-                                   noptions2, options2,
-                                   "-none", objc, objv, &value);
+   int status
+      = cindexParseBitMask(interp, options, cindexNone, objc, objv, &value);
    if (status == TCL_OK) {
       clang_CXIndex_setGlobalOptions(info->index, value);
    }
@@ -722,19 +716,17 @@ static int cindexIndexOptionsObjCmd(ClientData     clientData,
 
 //------------------------------------------------------ cindex::<index> parse
 
-static const char *cindexParseOptions[] = {
-   "-detailPreprocessingRecord",
-   "-incomplete",
-   "-precompiledPreamble",
-   "-cacheCompletionResults",
-   "-forSerialization",
-   "-cxxChainedPCH",
-   "-skipFunctionBodies",
-   "-includeBriefCommentsInCodeCompletion",
+static struct cindexBitMask cindexParseOptions[] = {
+   { "-detailPreprocessingRecord" },
+   { "-incomplete" },
+   { "-precompiledPreamble" },
+   { "-cacheCompletionResults" },
+   { "-forSerialization" },
+   { "-cxxChainedPCH" },
+   { "-skipFunctionBodies" },
+   { "-includeBriefCommentsInCodeCompletion" },
+   { NULL }
 };
-
-static int cindexNumParseOptions
-= sizeof cindexParseOptions / sizeof cindexParseOptions[0];
 
 static int cindexIndexParseObjCmd(ClientData     clientData,
                                   Tcl_Interp    *interp,
@@ -765,11 +757,8 @@ static int cindexIndexParseObjCmd(ClientData     clientData,
    }
 
    unsigned flags = 0;
-   int status = cindexParseBitMask(interp,
-                                   cindexNumParseOptions,
-                                   cindexParseOptions,
-                                   0, NULL,
-                                   "-none", optionsEnd, objv, &flags);
+   int status = cindexParseBitMask(interp, cindexParseOptions, cindexNone,
+                                   optionsEnd, objv, &flags);
 
    int nargs = objc - commandLineStart;
    char **args = (char **)Tcl_Alloc(nargs * sizeof *args);
@@ -1013,8 +1002,8 @@ static int cindexCursorEqualsObjCmd(ClientData clientData,
    }
 
    struct cindexCursorInfo cursorInfo[2];
-   for (int i = 2; i <= 3; ++i) {
-      int status = cindexValidateCursor(interp, objv[i], &cursorInfo[i - 2]);
+   for (int i = 1, cursor = 0; i < 3; ++i, ++cursor) {
+      int status = cindexValidateCursor(interp, objv[i], &cursorInfo[cursor]);
       if (status != TCL_OK) {
          return status;
       }
@@ -1164,8 +1153,7 @@ static int cindexCursorGenericEnumObjCmd(ClientData clientData,
    struct cindexCursorGenericEnumInfo *info
       = (struct cindexCursorGenericEnumInfo *)clientData;
 
-   cindexCursorGenericEnumProc proc
-      = (cindexCursorGenericEnumProc)clientData;
+   cindexCursorGenericEnumProc proc = info->proc;
    int value = proc(cursorInfo.cursor);
 
    return cindexGetEnumLabel(interp, info->labels, value);
@@ -1285,20 +1273,22 @@ static int cindexCursorOverriddenCursorsObjCmd(ClientData     clientData,
    unsigned numOverridden = 0;
    clang_getOverriddenCursors(cursorInfo.cursor, &overridden, &numOverridden);
 
-   Tcl_Obj *result = Tcl_GetObjResult(interp);
-   for (int i = 0; i < numOverridden; ++i) {
+   Tcl_Obj *result = Tcl_NewObj();
+   Tcl_SetObjResult(interp, result);
+
+   for (int i = 0; i < numOverridden && status == TCL_OK; ++i) {
       struct cindexCursorInfo newCursorInfo;
       newCursorInfo.cursor = overridden[i];
       newCursorInfo.tuSequenceNumber = cursorInfo.tuSequenceNumber;
 
-      Tcl_AppendObjToObj(result,
-                         Tcl_NewByteArrayObj((unsigned char *)&newCursorInfo,
-                                             sizeof newCursorInfo));
+      Tcl_Obj *cursorObj = Tcl_NewByteArrayObj((unsigned char *)&newCursorInfo,
+                                               sizeof newCursorInfo);
+      status = Tcl_ListObjAppendElement(interp, result, cursorObj);
    }
 
    clang_disposeOverriddenCursors(overridden);
 
-   return TCL_OK;
+   return status;
 }
 
 //--------------------------------------------- cindex::cursor::includedFile
@@ -1328,7 +1318,7 @@ static int cindexCursorIncludedFileObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
-//---------------------------------------- cindex::cursor::expansionLocation
+//----------------------------------------- cindex::cursor::<location command>
 
 static int cindexCursorRangeObjCmd(ClientData     clientData,
                                    Tcl_Interp    *interp,
@@ -1346,23 +1336,98 @@ static int cindexCursorRangeObjCmd(ClientData     clientData,
       return status;
    }
 
-   typedef void (*cursorProc)(CXSourceLocation,
+   typedef void (*CursorProc)(CXSourceLocation,
                               CXFile*, unsigned *, unsigned *, unsigned *);
 
    CXSourceRange range = clang_getCursorExtent(cursorInfo.cursor);
-   cursorProc proc = (cursorProc)clientData;
+   CursorProc proc = (CursorProc)clientData;
+
+   CXSourceLocation locs[2];
+   locs[0] = clang_getRangeStart(range);
+   locs[1] = clang_getRangeEnd(range);
 
    Tcl_Obj *result = Tcl_NewObj();
    Tcl_SetObjResult(interp, result);
 
-   CXSourceLocation start = clang_getRangeStart(range);
-   Tcl_Obj *startObj = cindexNewSourceLocationObj(start, proc);
-   Tcl_AppendObjToObj(result, startObj);
+   for (int i = 0; i < 2; ++i) {
 
-   CXSourceLocation end = clang_getRangeEnd(range);
-   Tcl_Obj *endObj = cindexNewSourceLocationObj(end, proc);
-   Tcl_AppendObjToObj(result, endObj);
+      CXFile   file;
+      unsigned line;
+      unsigned column;
+      unsigned offset;
 
+      proc(locs[i], &file, &line, &column, &offset);
+
+      Tcl_Obj *elm = Tcl_NewObj();
+      Tcl_ListObjAppendElement(NULL, elm, cindexFile);
+
+      CXString cxFileName = clang_getFileName(file);
+      const char *filename = clang_getCString(cxFileName);
+      Tcl_ListObjAppendElement(NULL, elm, cindexNewFileNameObj(filename));
+      clang_disposeString(cxFileName);
+
+      Tcl_ListObjAppendElement(NULL, elm, cindexLine);
+      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(line));
+
+      Tcl_ListObjAppendElement(NULL, elm, cindexColumn);
+      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(column));
+                      
+      Tcl_ListObjAppendElement(NULL, elm, cindexOffset);
+      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(offset));
+
+      Tcl_ListObjAppendElement(NULL, result, elm);
+   }
+
+   return status;
+}
+
+static int cindexCursorPresumedLocationObjCmd(ClientData     clientData,
+                                              Tcl_Interp    *interp,
+                                              int            objc,
+                                              Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXSourceRange range = clang_getCursorExtent(cursorInfo.cursor);
+
+   CXSourceLocation locs[2];
+   locs[0] = clang_getRangeStart(range);
+   locs[1] = clang_getRangeEnd(range);
+
+   Tcl_Obj *result = Tcl_NewObj();
+   Tcl_SetObjResult(interp, result);
+
+   for (int i = 0; i < 2; ++i) {
+      CXString cxFilename;
+      unsigned line;
+      unsigned column;
+      clang_getPresumedLocation(locs[i], &cxFilename, &line, &column);
+
+      Tcl_Obj *elm = Tcl_NewObj();
+      Tcl_ListObjAppendElement(NULL, elm, cindexFile);
+
+      const char *filename = clang_getCString(cxFilename);
+      Tcl_ListObjAppendElement(NULL, elm, cindexNewFileNameObj(filename));
+      clang_disposeString(cxFilename);
+
+      Tcl_ListObjAppendElement(NULL, elm, cindexLine);
+      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(line));
+
+      Tcl_ListObjAppendElement(NULL, elm, cindexColumn);
+      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(column));
+
+      Tcl_ListObjAppendElement(NULL, result, elm);
+   }
+                      
    return TCL_OK;
 }
 
@@ -1851,6 +1916,21 @@ int Cindex_Init(Tcl_Interp *interp)
       return TCL_ERROR;
    }
 
+   cindexNone = Tcl_NewStringObj("-none", -1);
+   Tcl_IncrRefCount(cindexNone);
+
+   cindexFile = Tcl_NewStringObj("file", -1);
+   Tcl_IncrRefCount(cindexFile);
+
+   cindexLine = Tcl_NewStringObj("line", -1);
+   Tcl_IncrRefCount(cindexLine);
+
+   cindexColumn = Tcl_NewStringObj("column", -1);
+   Tcl_IncrRefCount(cindexColumn);
+
+   cindexOffset = Tcl_NewStringObj("offset", -1);
+   Tcl_IncrRefCount(cindexOffset);
+
    Tcl_Namespace *cindexNs
       = Tcl_CreateNamespace(interp, "cindex", NULL, NULL);
 
@@ -1934,15 +2014,13 @@ int Cindex_Init(Tcl_Interp *interp)
       { "expansionLocation",
         cindexCursorRangeObjCmd,
         (ClientData)clang_getExpansionLocation },
-      { "presumedLocation",
-        cindexCursorRangeObjCmd,
-        (ClientData)clang_getPresumedLocation },
+      { "presumedLocation", cindexCursorPresumedLocationObjCmd },
       { "spellingLocation",
         cindexCursorRangeObjCmd,
         (ClientData)clang_getSpellingLocation },
       { "fileLocation",
         cindexCursorRangeObjCmd,
-        (ClientData)clang_getSpellingLocation },
+        (ClientData)clang_getFileLocation },
    };
 
    for (int i = 0; i < sizeof cursorCmdTable / sizeof cursorCmdTable[0]; ++i) {
@@ -1960,6 +2038,7 @@ int Cindex_Init(Tcl_Interp *interp)
 
    Tcl_Command cursorIsCmd
       = Tcl_CreateEnsemble(interp, "::cindex::cursor::is", cursorIsNs, 0);
+   Tcl_Export(interp, cursorNs, "is", 0);
 
    Tcl_CreateObjCommand(interp, "cindex::cursor::is::null",
 			cindexCursorIsNullObjCmd, (ClientData)NULL, NULL);
@@ -1999,6 +2078,17 @@ int Cindex_Init(Tcl_Interp *interp)
       { "inSystemHeader", cindexCursorIsInSystemHeaderObjCmd },
       { "inMainFile", cindexCursorIsInMainFileObjCmd },
    };
+   int numIsSubCmd = sizeof cursorIsSubCmdTable / sizeof cursorIsSubCmdTable[0];
+
+   for (int i = 0; i < numIsSubCmd; ++i) {
+      char buffer[80];
+
+      snprintf(buffer, sizeof buffer,
+               "cindex::cursor::is::%s", cursorIsSubCmdTable[i].name);
+      Tcl_CreateObjCommand(interp, buffer, cursorIsSubCmdTable[i].proc,
+                           cursorIsSubCmdTable[i].clientData, NULL);
+      Tcl_Export(interp, cursorIsNs, cursorIsSubCmdTable[i].name, 0);
+   }
 
    {
       Tcl_Obj *name =
@@ -2006,10 +2096,8 @@ int Cindex_Init(Tcl_Interp *interp)
       Tcl_IncrRefCount(name);
 
       unsigned mask = clang_defaultEditingTranslationUnitOptions();
-      int status = cindexBitMaskToString(interp,
-                                         cindexNumParseOptions,
-                                         cindexParseOptions,
-                                         0, NULL, "-none", mask);
+      int status = cindexBitMaskToString(interp, cindexParseOptions,
+                                         cindexNone, mask);
       if (status != TCL_OK) {
          Tcl_DecrRefCount(name);
          return status;

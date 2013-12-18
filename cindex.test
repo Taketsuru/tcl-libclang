@@ -34,11 +34,12 @@ namespace import cindex::*
 
 # ---------------------------------------------------------------------- index
 
-test cindex_index-1.0 "index / alpha omega test" -body {
+test cindex_index-1.0 "index / alpha omega" -body {
     index myindex
     myindex options -none
     myindex options
     rename myindex {}
+    return
 }
 
 test cindex_index-1.1 "index options / default value" -setup {
@@ -67,22 +68,78 @@ test cindex_index-1.3 "index options / set combined option" -setup {
     myindex options
 } -result -threadBackgroundPriorityForAll
 
+# XXX various options to myindex parse command should be tested.
+# -detailPreprocessingRecord
+# -incomplete
+# -precompiledPreamble
+# -cacheCompletionResults
+# -forSerialization
+# -cxxChainedPCH
+# -skipFunctionBodies
+# -includeBriefCommentsInCodeCompletion
+
 # ----------------------------------------------------------- translation unit
 
-test cindex_index-2.0 "translation unit / alpha omega" -body {
+set setupMytu {
     index myindex
     myindex parse mytu -- \
         -I /usr/local/include -I /usr/local/include/tcl8.6 \
         libcindex.c
+}
+
+set cleanupMytu {
+    rename mytu {}
+    rename myindex {}
+}
+
+test cindex_index-2.0 "translation unit / alpha omega" \
+    -setup $setupMytu \
+    -cleanup [concat "file delete cindex.ast;" $cleanupMytu] \
+-body {
     mytu save cindex.ast
     mytu reparse
     mytu resourceUsage
     mytu cursor
-    rename mytu {}
-    rename myindex {}
-} -cleanup {
-    file delete cindex.ast
+    return
 }
+
+# --------------------------------------------------------------------- cursor
+
+test cindex_index-3.0 "cursor / alpha omega" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set root [mytu cursor]
+    cursor equals $root $root
+    cursor hash $root
+    cursor kind $root
+    cursor linkage $root
+    cursor availability $root
+    cursor language $root
+    cursor translationUnit $root
+    cursor semanticParent $root
+    cursor lexicalParent $root
+    cursor overriddenCursors $root
+    cursor includedFile $root
+    cursor expansionLocation $root
+    cursor presumedLocation $root
+    cursor spellingLocation $root
+    cursor fileLocation $root
+    cursor is declaration $root
+    cursor is reference $root
+    cursor is expression $root
+    cursor is statement $root
+    cursor is attribute $root
+    cursor is invalid $root
+    cursor is translationUnit $root
+    cursor is preprocessing $root
+    cursor is unexposed $root
+    cursor is inSystemHeader $root
+    cursor is inMainFile $root
+    return
+}
+
+# ----------------------------------------------------------------------------
 
 cleanupTests
 
