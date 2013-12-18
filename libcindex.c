@@ -90,8 +90,8 @@ struct cindexEnumLabels
 };
 
 static int cindexGetEnumLabel(Tcl_Interp                *interp,
-                                struct cindexEnumLabels *labels,
-                                int                      value)
+                              struct cindexEnumLabels *labels,
+                              int                      value)
 {
    if (labels->labels == NULL) {
       int n;
@@ -128,7 +128,7 @@ static struct cindexEnumLabels cindexAvailabilityLabels = {
 };
 
 static int cindexGetAvailabilityObj(Tcl_Interp                *interp,
-                                      enum CXAvailabilityKind  kind)
+                                    enum CXAvailabilityKind  kind)
 {
    return cindexGetEnumLabel(interp, &cindexAvailabilityLabels, kind);
 }
@@ -214,7 +214,7 @@ static int cindexBitMaskToString(Tcl_Interp                 *interp,
       }
    }
 
-   while (value     != 0) {
+   while (value != 0) {
       int i = ffs(value) - 1;
       if (noptions1 <= i) {
          Tcl_SetObjResult(interp,
@@ -303,8 +303,8 @@ cindexIndexAddChild(struct cindexIndexInfo *info, Tcl_Obj *child)
    cindexAddChild(info->interp, &info->children, child);
 }
 
-static void cindexIndexRemoveChild(struct cindexIndexInfo *info,
-                                     Tcl_Obj                  *child)
+static void
+cindexIndexRemoveChild(struct cindexIndexInfo *info, Tcl_Obj *child)
 {
    cindexRemoveChild(info->interp, &info->children, child);
 }
@@ -353,9 +353,9 @@ struct cindexTranslationUnitInfo
 {
    struct cindexTranslationUnitInfo *next;
    struct cindexIndexInfo           *parent;
-   Tcl_Obj                            *name;
-   CXTranslationUnit                   translationUnit;
-   int                                 sequenceNumber;
+   Tcl_Obj                          *name;
+   CXTranslationUnit                 translationUnit;
+   int                               sequenceNumber;
 };
 
 static struct cindexTranslationUnitInfo *translationUnitHashTable[256];
@@ -414,12 +414,12 @@ struct cindexCursorInfo
    int      tuSequenceNumber;
 };
 
-static int cindexValidateCursor(Tcl_Interp		    *interp,
-                                  Tcl_Obj                   *cursorObj,
-                                  struct cindexCursorInfo *info)
+static int cindexValidateCursor(Tcl_Interp		*interp,
+                                Tcl_Obj                 *cursorObj,
+                                struct cindexCursorInfo *info)
 {
-   int infoSize = 0;
-   unsigned char *infoPtr = Tcl_GetByteArrayFromObj(cursorObj, &infoSize);
+   int            infoSize = 0;
+   unsigned char *infoPtr  = Tcl_GetByteArrayFromObj(cursorObj, &infoSize);
 
    if (infoSize != sizeof *info) {
       Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid cursor", -1));
@@ -458,11 +458,11 @@ static void cindexInitializeKeyObjs(void)
 }
 
 static Tcl_Obj *cindexNewSourceLocationObj(CXSourceLocation location,
-                                             void (*proc)(CXSourceLocation,
-                                                          CXFile *,
-                                                          unsigned *,
-                                                          unsigned *,
-                                                          unsigned *))
+                                           void (*proc)(CXSourceLocation,
+                                                        CXFile *,
+                                                        unsigned *,
+                                                        unsigned *,
+                                                        unsigned *))
 {
    cindexInitializeKeyObjs();
 
@@ -497,9 +497,9 @@ static Tcl_Obj *cindexNewSourceLocationObj(CXSourceLocation location,
 //---------------------------------- cindex::<translationUnit instance> save
 
 static int cindexTranslationUnitSaveObjCmd(ClientData     clientData,
-                                             Tcl_Interp    *interp,
-                                             int            objc,
-                                             Tcl_Obj *const objv[])
+                                           Tcl_Interp    *interp,
+                                           int            objc,
+                                           Tcl_Obj *const objv[])
 {
    if (objc < 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "filename");
@@ -550,9 +550,9 @@ static int cindexTranslationUnitSaveObjCmd(ClientData     clientData,
 //------------------------------- cindex::<translationUnit instance> reparse
 
 static int cindexTranslationUnitReparseObjCmd(ClientData     clientData,
-                                                Tcl_Interp    *interp,
-                                                int            objc,
-                                                Tcl_Obj *const objv[])
+                                              Tcl_Interp    *interp,
+                                              int            objc,
+                                              Tcl_Obj *const objv[])
 {
    if (objc != 1) {
       Tcl_WrongNumArgs(interp, 1, objv, "");
@@ -577,9 +577,9 @@ static int cindexTranslationUnitReparseObjCmd(ClientData     clientData,
 
 static int
 cindexTranslationUnitResourceUsageObjCmd(ClientData     clientData,
-                                           Tcl_Interp    *interp,
-                                           int            objc,
-                                           Tcl_Obj *const objv[])
+                                         Tcl_Interp    *interp,
+                                         int            objc,
+                                         Tcl_Obj *const objv[])
 {
    if (objc != 1) {
       Tcl_WrongNumArgs(interp, 1, objv, "");
@@ -623,9 +623,9 @@ cindexTranslationUnitResourceUsageObjCmd(ClientData     clientData,
 //-------------------------------- cindex::<translationUnit instance> cursor
 
 static int cindexTranslationUnitCursorObjCmd(ClientData     clientData,
-                                               Tcl_Interp    *interp,
-                                               int            objc,
-                                               Tcl_Obj *const objv[])
+                                             Tcl_Interp    *interp,
+                                             int            objc,
+                                             Tcl_Obj *const objv[])
 {
    // cursor
    //	returns the cursor pointing the root AST node
@@ -657,9 +657,9 @@ static int cindexTranslationUnitCursorObjCmd(ClientData     clientData,
 //--------------------------------------- cindex::<translationUnit instance>
 
 static int cindexTranslationUnitInstanceObjCmd(ClientData     clientData,
-                                                 Tcl_Interp    *interp,
-                                                 int            objc,
-                                                 Tcl_Obj *const objv[])
+                                               Tcl_Interp    *interp,
+                                               int            objc,
+                                               Tcl_Obj *const objv[])
 {
    if (objc < 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "subcommand");
@@ -667,23 +667,23 @@ static int cindexTranslationUnitInstanceObjCmd(ClientData     clientData,
    }
 
    static struct cindexSubcommand subcommands[] = {
-      { "save", cindexTranslationUnitSaveObjCmd },
-      { "reparse", cindexTranslationUnitReparseObjCmd },
+      { "save",		 cindexTranslationUnitSaveObjCmd },
+      { "reparse",	 cindexTranslationUnitReparseObjCmd },
       { "resourceUsage", cindexTranslationUnitResourceUsageObjCmd },
-      { "cursor", cindexTranslationUnitCursorObjCmd },
+      { "cursor",	 cindexTranslationUnitCursorObjCmd },
    };
    int n = sizeof subcommands / sizeof subcommands[0];
 
    return cindexDispatchSubcommand(clientData, interp, objc, objv,
-                                     n, subcommands);
+                                   n, subcommands);
 }
 
 //----------------------------------------- cindex::<index instance> options
 
 static int cindexIndexOptionsObjCmd(ClientData     clientData,
-                                      Tcl_Interp    *interp,
-                                      int            objc,
-                                      Tcl_Obj *const objv[])
+                                    Tcl_Interp    *interp,
+                                    int            objc,
+                                    Tcl_Obj *const objv[])
 {
    static const char *options1[] = {
       "-threadBackgroundPriorityForIndexing",
@@ -703,16 +703,16 @@ static int cindexIndexOptionsObjCmd(ClientData     clientData,
       unsigned value = clang_CXIndex_getGlobalOptions(info->index);
 
       return cindexBitMaskToString(interp,
-                                     noptions1, options1,
-                                     noptions2, options2,
-                                     "-none", value);
+                                   noptions1, options1,
+                                   noptions2, options2,
+                                   "-none", value);
    }
 
    unsigned value = 0;
    int status = cindexParseBitMask(interp,
-                                     noptions1, options1,
-                                     noptions2, options2,
-                                     "-none", objc, objv, &value);
+                                   noptions1, options1,
+                                   noptions2, options2,
+                                   "-none", objc, objv, &value);
    if (status == TCL_OK) {
       clang_CXIndex_setGlobalOptions(info->index, value);
    }
@@ -734,7 +734,7 @@ static const char *cindexParseOptions[] = {
 };
 
 static int cindexNumParseOptions
-   = sizeof cindexParseOptions / sizeof cindexParseOptions[0];
+= sizeof cindexParseOptions / sizeof cindexParseOptions[0];
 
 static int cindexIndexParseObjCmd(ClientData     clientData,
                                   Tcl_Interp    *interp,
@@ -766,10 +766,10 @@ static int cindexIndexParseObjCmd(ClientData     clientData,
 
    unsigned flags = 0;
    int status = cindexParseBitMask(interp,
-                                     cindexNumParseOptions,
-                                     cindexParseOptions,
-                                     0, NULL,
-                                     "-none", optionsEnd, objv, &flags);
+                                   cindexNumParseOptions,
+                                   cindexParseOptions,
+                                   0, NULL,
+                                   "-none", optionsEnd, objv, &flags);
 
    int nargs = objc - commandLineStart;
    char **args = (char **)Tcl_Alloc(nargs * sizeof *args);
@@ -791,10 +791,10 @@ static int cindexIndexParseObjCmd(ClientData     clientData,
 
    struct cindexTranslationUnitInfo *info
       = (struct cindexTranslationUnitInfo *)Tcl_Alloc(sizeof *info);
-   info->parent = parent;
-   info->name = objv[1];
+   info->parent          = parent;
+   info->name            = objv[1];
    info->translationUnit = tu;
-   info->sequenceNumber = cindexTranslationUnitNextSequenceNumber++;
+   info->sequenceNumber  = cindexTranslationUnitNextSequenceNumber++;
 
    int hashTableSize =
       sizeof translationUnitHashTable / sizeof translationUnitHashTable[0];
@@ -814,9 +814,9 @@ static int cindexIndexParseObjCmd(ClientData     clientData,
 //------------------------------------------------- cindex::<index instance>
 
 static int cindexIndexInstanceObjCmd(ClientData clientData,
-                                       Tcl_Interp *interp,
-                                       int objc,
-                                       Tcl_Obj *const objv[])
+                                     Tcl_Interp *interp,
+                                     int objc,
+                                     Tcl_Obj *const objv[])
 {
    if (objc < 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "subcommand");
@@ -824,8 +824,8 @@ static int cindexIndexInstanceObjCmd(ClientData clientData,
    }
 
    static struct cindexSubcommand subcommands[] = {
-      { "options", cindexIndexOptionsObjCmd },
-      { "parse", cindexIndexParseObjCmd }
+      { "options",	cindexIndexOptionsObjCmd },
+      { "parse",	cindexIndexParseObjCmd }
    };
    int n = sizeof subcommands / sizeof subcommands[0];
 
@@ -840,9 +840,9 @@ static int cindexIndexInstanceObjCmd(ClientData clientData,
  */
 
 static int cindexIndexObjCmd(ClientData     clientData,
-                               Tcl_Interp    *interp,
-                               int            objc,
-                               Tcl_Obj *const objv[])
+                             Tcl_Interp    *interp,
+                             int            objc,
+                             Tcl_Obj *const objv[])
 {
    const char *commandName = NULL;
 
@@ -919,8 +919,8 @@ struct cindexForeachChildInfo
 
 static enum CXChildVisitResult
 cindexForeachChildHelper(CXCursor     cursor,
-                           CXCursor     parent,
-                           CXClientData clientData)
+                         CXCursor     parent,
+                         CXClientData clientData)
 {
    struct cindexForeachChildInfo *visitInfo
       = (struct cindexForeachChildInfo *)clientData;
@@ -958,9 +958,9 @@ cindexForeachChildHelper(CXCursor     cursor,
 }
 
 static int cindexForeachChildObjCmd(ClientData clientData,
-                                      Tcl_Interp *interp,
-                                      int objc,
-                                      Tcl_Obj *const objv[])
+                                    Tcl_Interp *interp,
+                                    int objc,
+                                    Tcl_Obj *const objv[])
 {
    if (objc != 4) {
       Tcl_WrongNumArgs(interp, 1, objv, "childName cursor script");
@@ -993,9 +993,9 @@ static int cindexForeachChildObjCmd(ClientData clientData,
 //---------------------------------------------------------- cindex::recurse
 
 static int cindexRecurseObjCmd(ClientData clientData,
-                                 Tcl_Interp *interp,
-                                 int objc,
-                                 Tcl_Obj *const objv[])
+                               Tcl_Interp *interp,
+                               int objc,
+                               Tcl_Obj *const objv[])
 {
    return TCL_RECURSE;
 }
@@ -1003,9 +1003,9 @@ static int cindexRecurseObjCmd(ClientData clientData,
 //--------------------------------------------------- cindex::cursor::equals
 
 static int cindexCursorEqualsObjCmd(ClientData clientData,
-                                      Tcl_Interp *interp,
-                                      int objc,
-                                      Tcl_Obj *const objv[])
+                                    Tcl_Interp *interp,
+                                    int objc,
+                                    Tcl_Obj *const objv[])
 {
    if (objc != 3) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor1 cursor2");
@@ -1030,9 +1030,9 @@ static int cindexCursorEqualsObjCmd(ClientData clientData,
 //----------------------------------------------------- cindex::cursor::hash
 
 static int cindexCursorHashObjCmd(ClientData clientData,
-                                    Tcl_Interp *interp,
-                                    int objc,
-                                    Tcl_Obj *const objv[])
+                                  Tcl_Interp *interp,
+                                  int objc,
+                                  Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1054,9 +1054,9 @@ static int cindexCursorHashObjCmd(ClientData clientData,
 //----------------------------------------------------- cindex::cursor::kind
 
 static int cindexCursorKindObjCmd(ClientData clientData,
-                                    Tcl_Interp *interp,
-                                    int objc,
-                                    Tcl_Obj *const objv[])
+                                  Tcl_Interp *interp,
+                                  int objc,
+                                  Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1085,9 +1085,9 @@ static int cindexCursorKindObjCmd(ClientData clientData,
 //------------------------------------------------- cindex::cursor::is::null
 
 static int cindexCursorIsNullObjCmd(ClientData clientData,
-                                      Tcl_Interp *interp,
-                                      int objc,
-                                      Tcl_Obj *const objv[])
+                                    Tcl_Interp *interp,
+                                    int objc,
+                                    Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1109,9 +1109,9 @@ static int cindexCursorIsNullObjCmd(ClientData clientData,
 //-------------------------------------------- cindex::cursor::is::<generic>
 
 static int cindexCursorIsGenericObjCmd(ClientData clientData,
-                                         Tcl_Interp *interp,
-                                         int objc,
-                                         Tcl_Obj *const objv[])
+                                       Tcl_Interp *interp,
+                                       int objc,
+                                       Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1146,9 +1146,9 @@ struct cindexCursorGenericEnumInfo
 };
 
 static int cindexCursorGenericEnumObjCmd(ClientData clientData,
-                                           Tcl_Interp *interp,
-                                           int objc,
-                                           Tcl_Obj *const objv[])
+                                         Tcl_Interp *interp,
+                                         int objc,
+                                         Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1174,9 +1174,9 @@ static int cindexCursorGenericEnumObjCmd(ClientData clientData,
 //------------------------------------------ cindex::cursor::translationUnit
 
 static int cindexCursorTranslationUnitObjCmd(ClientData clientData,
-                                               Tcl_Interp *interp,
-                                               int objc,
-                                               Tcl_Obj *const objv[])
+                                             Tcl_Interp *interp,
+                                             int objc,
+                                             Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1212,10 +1212,10 @@ static int cindexCursorTranslationUnitObjCmd(ClientData clientData,
 
 //------------------------------------------- cindex::cursor::semanticParent
 
-static int cindexCursorSemanticParentObjCmd(ClientData clientData,
-                                              Tcl_Interp *interp,
-                                              int objc,
-                                              Tcl_Obj *const objv[])
+static int cindexCursorSemanticParentObjCmd(ClientData     clientData,
+                                            Tcl_Interp    *interp,
+                                            int            objc,
+                                            Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1238,10 +1238,10 @@ static int cindexCursorSemanticParentObjCmd(ClientData clientData,
 
 //------------------------------------------- cindex::cursor::lexicalParent
 
-static int cindexCursorLexicalParentObjCmd(ClientData clientData,
-                                             Tcl_Interp *interp,
-                                             int objc,
-                                             Tcl_Obj *const objv[])
+static int cindexCursorLexicalParentObjCmd(ClientData     clientData,
+                                           Tcl_Interp    *interp,
+                                           int            objc,
+                                           Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1265,10 +1265,10 @@ static int cindexCursorLexicalParentObjCmd(ClientData clientData,
 
 //----------------------------------------- cindex::cursor::overridenCursors
 
-static int cindexCursorOverriddenCursorsObjCmd(ClientData clientData,
-                                                 Tcl_Interp *interp,
-                                                 int objc,
-                                                 Tcl_Obj *const objv[])
+static int cindexCursorOverriddenCursorsObjCmd(ClientData     clientData,
+                                               Tcl_Interp    *interp,
+                                               int            objc,
+                                               Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1303,10 +1303,10 @@ static int cindexCursorOverriddenCursorsObjCmd(ClientData clientData,
 
 //--------------------------------------------- cindex::cursor::includedFile
 
-static int cindexCursorIncludedFileObjCmd(ClientData clientData,
-                                            Tcl_Interp *interp,
-                                            int objc,
-                                            Tcl_Obj *const objv[])
+static int cindexCursorIncludedFileObjCmd(ClientData     clientData,
+                                          Tcl_Interp    *interp,
+                                          int            objc,
+                                          Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1330,10 +1330,10 @@ static int cindexCursorIncludedFileObjCmd(ClientData clientData,
 
 //---------------------------------------- cindex::cursor::expansionLocation
 
-static int cindexCursorRangeObjCmd(ClientData clientData,
-                                     Tcl_Interp *interp,
-                                     int objc,
-                                     Tcl_Obj *const objv[])
+static int cindexCursorRangeObjCmd(ClientData     clientData,
+                                   Tcl_Interp    *interp,
+                                   int            objc,
+                                   Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1368,10 +1368,10 @@ static int cindexCursorRangeObjCmd(ClientData clientData,
 
 //---------------------------------------- cindex::cursor::is:inSystemHeader
 
-static int cindexCursorIsInSystemHeaderObjCmd(ClientData clientData,
-                                                Tcl_Interp *interp,
-                                                int objc,
-                                                Tcl_Obj *const objv[])
+static int cindexCursorIsInSystemHeaderObjCmd(ClientData     clientData,
+                                              Tcl_Interp    *interp,
+                                              int            objc,
+                                              Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -1394,10 +1394,10 @@ static int cindexCursorIsInSystemHeaderObjCmd(ClientData clientData,
 
 //-------------------------------------------- cindex::cursor::is:inMainFile
 
-static int cindexCursorIsInMainFileObjCmd(ClientData clientData,
-                                            Tcl_Interp *interp,
-                                            int objc,
-                                            Tcl_Obj *const objv[])
+static int cindexCursorIsInMainFileObjCmd(ClientData     clientData,
+                                          Tcl_Interp    *interp,
+                                          int            objc,
+                                          Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor");
@@ -2007,9 +2007,9 @@ int Cindex_Init(Tcl_Interp *interp)
 
       unsigned mask = clang_defaultEditingTranslationUnitOptions();
       int status = cindexBitMaskToString(interp,
-                                           cindexNumParseOptions,
-                                           cindexParseOptions,
-                                           0, NULL, "-none", mask);
+                                         cindexNumParseOptions,
+                                         cindexParseOptions,
+                                         0, NULL, "-none", mask);
       if (status != TCL_OK) {
          Tcl_DecrRefCount(name);
          return status;
