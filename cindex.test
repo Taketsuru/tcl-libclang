@@ -167,6 +167,9 @@ test cindex_type-0.0 "type / alpha omega" \
     type spelling $mytype
     type equal $mytype $mytype
     type canonicalType $mytype
+    type is constQualified $mytype
+    type is volatileQualified $mytype
+    type is restrictQualified $mytype
     return
 }
 

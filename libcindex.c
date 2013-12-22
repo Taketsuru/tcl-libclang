@@ -2491,6 +2491,32 @@ static int cindexTypeCanonicalTypeObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+//-------------------------------------------- cindex::type returning unsigned
+
+static int cindexTypeGenericUnsignedObjCmd(ClientData     clientData,
+                                           Tcl_Interp    *interp,
+                                           int            objc,
+                                           Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "type");
+      return TCL_ERROR;
+   }
+
+   CXType cxtype;
+   int status = cindexGetCXTypeObj(interp, objv[1], &cxtype);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   unsigned (*proc)(CXType) = (unsigned (*)(CXType))clientData;
+   unsigned  result         = proc(cxtype);
+   Tcl_Obj  *resultObj      = Tcl_NewLongObj(result);
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
 //------------------------------------------------------------- initialization
 
 int cindex_createCallingConvTable(Tcl_Interp *interp)
@@ -2698,6 +2724,26 @@ int Cindex_Init(Tcl_Interp *interp)
       { NULL }
    };
    cindexCreateAndExportCommands(interp, "cindex::type::%s", typeCmdTable);
+
+   Tcl_Namespace *typeIsNs
+      = Tcl_CreateNamespace(interp, "cindex::type::is", NULL, NULL);
+   Tcl_Command typeIsCmd
+      = Tcl_CreateEnsemble(interp, "::cindex::type::is", typeIsNs, 0);
+   Tcl_Export(interp, typeNs, "is", 0);
+
+   static struct cindexCommand typeIsCmdTable[] = {
+      { "constQualified",
+        cindexTypeGenericUnsignedObjCmd,
+        clang_isConstQualifiedType },
+      { "volatileQualified",
+        cindexTypeGenericUnsignedObjCmd,
+        clang_isVolatileQualifiedType },
+      { "restrictQualified",
+        cindexTypeGenericUnsignedObjCmd,
+        clang_isRestrictQualifiedType },
+      { NULL }
+   };
+   cindexCreateAndExportCommands(interp, "cindex::type::is::%s", typeIsCmdTable);
 
    {
       Tcl_Obj *name =
