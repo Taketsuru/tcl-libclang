@@ -172,6 +172,10 @@ test cindex_type-0.0 "type / alpha omega" \
     type elementType $mytype
     type arrayElementType $mytype
     type classType $mytype
+    type numElements $mytype
+    type arraySize $mytype
+    type alignof $mytype
+    type sizeof $mytype
     type is constQualified $mytype
     type is volatileQualified $mytype
     type is restrictQualified $mytype

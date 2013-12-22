@@ -2493,12 +2493,12 @@ static int cindexGenericTypeToTypeObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
-//-------------------------------------------- cindex::type returning unsigned
+//----------------------------------------------------- type->unsigned command
 
 static int cindexGenericTypeToUnsignedObjCmd(ClientData     clientData,
-                                           Tcl_Interp    *interp,
-                                           int            objc,
-                                           Tcl_Obj *const objv[])
+                                             Tcl_Interp    *interp,
+                                             int            objc,
+                                             Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "type");
@@ -2514,6 +2514,32 @@ static int cindexGenericTypeToUnsignedObjCmd(ClientData     clientData,
    unsigned (*proc)(CXType) = (unsigned (*)(CXType))clientData;
    unsigned  result         = proc(cxtype);
    Tcl_Obj  *resultObj      = Tcl_NewLongObj(result);
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
+//----------------------------------------------------- type->long long command
+
+static int cindexGenericTypeToLongLongObjCmd(ClientData     clientData,
+                                             Tcl_Interp    *interp,
+                                             int            objc,
+                                             Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "type");
+      return TCL_ERROR;
+   }
+
+   CXType cxtype;
+   int status = cindexGetCXTypeObj(interp, objv[1], &cxtype);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   long long (*proc)(CXType) = (long long (*)(CXType))clientData;
+   long long  result         = proc(cxtype);
+   Tcl_Obj   *resultObj      = cindexNewIntmaxObj(result);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
@@ -2740,6 +2766,18 @@ int Cindex_Init(Tcl_Interp *interp)
       { "classType",
         cindexGenericTypeToTypeObjCmd,
         clang_Type_getClassType },
+      { "numElements",
+        cindexGenericTypeToLongLongObjCmd,
+        clang_getNumElements },
+      { "arraySize",
+        cindexGenericTypeToLongLongObjCmd,
+        clang_getArraySize },
+      { "alignof",
+        cindexGenericTypeToLongLongObjCmd,
+        clang_Type_getAlignOf },
+      { "sizeof",
+        cindexGenericTypeToLongLongObjCmd,
+        clang_Type_getSizeOf },
       { NULL }
    };
    cindexCreateAndExportCommands(interp, "cindex::type::%s", typeCmdTable);
