@@ -94,17 +94,14 @@ cindexCreateAndExportCommands(Tcl_Interp           *interp,
       if (sizeof buffer
           <= snprintf(buffer, sizeof buffer,
                       commandNameFormat, command[i].name)) {
-         fprintf(stderr, "command name buffer overflow: %s\n",
-                 buffer);
-         abort();
+         Tcl_Panic("command name buffer overflow: %s\n", buffer);
       }
       Tcl_Command token
          = Tcl_CreateObjCommand(interp, buffer, command[i].proc,
                                 command[i].clientData, NULL);
       Tcl_CmdInfo info;
       if (! Tcl_GetCommandInfoFromToken(token, &info)) {
-         fprintf(stderr, "Tcl_GetCommandInfoFromToken failed: %s\n", buffer);
-         abort();
+         Tcl_Panic("Tcl_GetCommandInfoFromToken failed: %s\n", buffer);
       }
       Tcl_Export(interp, info.namespacePtr, command[i].name, 0);
    }
@@ -192,7 +189,7 @@ static Tcl_Obj *cindexNewUintmaxObj(uintmax_t value)
    return result;
 }
 
-static Tcl_Obj *cindexNewPointerObj(void *ptr)
+static Tcl_Obj *cindexNewPointerObj(const void *ptr)
 {
    return cindexNewUintmaxObj((uintptr_t)ptr);
 }
@@ -371,11 +368,12 @@ static int cindexBitMaskToString(Tcl_Interp           *interp,
       return TCL_OK;
    }
 
-   unsigned value = mask;
    Tcl_Obj *result = Tcl_NewObj();
    Tcl_SetObjResult(interp, result);
 
-   int status = TCL_OK;
+   unsigned value  = mask;
+   int      status = TCL_OK;
+
    int i;
    for (i = 0; options[i].name != NULL && status == TCL_OK; ++i) {
       unsigned mask = options[i].mask;
@@ -443,27 +441,29 @@ static void cindexIndexDeleteProc(ClientData clientData)
 
    struct cindexIndexInfo *info = (struct cindexIndexInfo *)clientData;
 
+   Tcl_Interp *interp = info->interp;
+
    // Until info->children becomes empty, delete the last command in the list.
    for (;;) {
       int n = 0;
-      status = Tcl_ListObjLength(info->interp, info->children, &n);
+      status = Tcl_ListObjLength(interp, info->children, &n);
       if (status != TCL_OK || n <= 0) {
          break;
       }
 
       Tcl_Obj *child = NULL;
-      status = Tcl_ListObjIndex(info->interp, info->children, n - 1, &child);
+      status = Tcl_ListObjIndex(interp, info->children, n - 1, &child);
       if (status != TCL_OK) {
          break;
       }
 
       Tcl_IncrRefCount(child);
-      Tcl_DeleteCommand(info->interp, Tcl_GetStringFromObj(child, NULL));
+      Tcl_DeleteCommand(interp, Tcl_GetStringFromObj(child, NULL));
       Tcl_DecrRefCount(child);
    }
 
    if (status != TCL_OK) {
-      Tcl_BackgroundException(info->interp, status);
+      Tcl_BackgroundException(interp, status);
    }
 
    clang_disposeIndex(info->index);
@@ -535,9 +535,7 @@ cindexIndexRemoveChild(struct cindexIndexInfo *info, Tcl_Obj *child)
    }
 
    if (status == TCL_OK && ! found) {
-      fprintf(stderr,
-              "child %s doesn't exist in the children list\n", child_str);
-      abort();
+      Tcl_Panic("child %s doesn't exist in the children list\n", child_str);
    }
 
  end:
@@ -629,12 +627,12 @@ static int cindexIsValidTranslationUnit(int sequenceNumber)
 
 //------------------------------------------------------------- cursor mapping
 
-int cindexCreateCursorKindTable(Tcl_Interp *interp)
+static Tcl_Obj *cindexCursorKindNamesName;
+static Tcl_Obj *cindexCursorKindValuesName;
+
+static int cindexCreateCursorKindTable(Tcl_Interp *interp)
 {
-   struct {
-      const char *name;
-      int         kind;
-   } table[] = {
+   static struct cindexNameValuePair table[] = {
       { "UnexposedDecl",
         CXCursor_UnexposedDecl },
       { "StructDecl",
@@ -936,48 +934,126 @@ int cindexCreateCursorKindTable(Tcl_Interp *interp)
       { "ModuleImportDecl",
         CXCursor_ModuleImportDecl },
    };
-   int numEntries = sizeof table / sizeof table[0];
 
-   Tcl_Obj *name = Tcl_NewStringObj("cindex::cursorKind", -1);
-   for (int i = 0; i < numEntries; ++i) {
-      if (Tcl_ObjSetVar2(interp, name, Tcl_NewIntObj(table[i].kind),
-                         Tcl_NewStringObj(table[i].name, -1),
-                         TCL_LEAVE_ERR_MSG) == NULL) {
-         return TCL_ERROR;
-      }
-   }
-
-   return TCL_OK;
+   return cindexCreateNameValueTable(interp, "cindex::cursorKind",
+                                     &cindexCursorKindNamesName,
+                                     &cindexCursorKindValuesName,
+                                     table);
 }
 
-struct cindexCursorInfo
+static Tcl_Obj *cindexNewCursorObj(Tcl_Interp          *interp,
+                                   CXCursor             cursor,
+                                   struct cindexTUInfo *tuInfo)
 {
-   CXCursor cursor;
-   int      tuSequenceNumber;
-};
+   Tcl_Obj *elms[6];
+   int      ix = 0;
 
-static int cindexValidateCursor(Tcl_Interp		*interp,
-                                Tcl_Obj                 *cursorObj,
-                                struct cindexCursorInfo *info)
+   Tcl_Obj *kind = Tcl_NewIntObj(cursor.kind);
+   Tcl_IncrRefCount(kind);
+   Tcl_Obj *kindName
+      = Tcl_ObjGetVar2(interp, cindexCursorKindNamesName, kind, 0);
+   Tcl_DecrRefCount(kind);
+   if (kindName == NULL) {
+      Tcl_Panic("%s(%d) corrupted",
+                Tcl_GetStringFromObj(cindexCursorKindNamesName, NULL),
+                cursor.kind);
+   }
+   elms[ix++] = kindName;
+   elms[ix++] = Tcl_NewIntObj(cursor.xdata);
+
+   int ndata = sizeof cursor.data / sizeof cursor.data[0];
+   for (int i = 0; i < ndata; ++i) {
+      elms[ix + i] = cindexNewPointerObj(cursor.data[i]);
+   }
+   ix += ndata;
+
+   elms[ix++] = Tcl_NewIntObj(tuInfo->sequenceNumber);
+
+   return Tcl_NewListObj(ix, elms);
+}
+
+static int
+cindexGetCursorFromObj(Tcl_Interp *interp, Tcl_Obj *obj,
+                       CXCursor *cursor, struct cindexTUInfo **infoPtr)
 {
-   int            infoSize = 0;
-   unsigned char *infoPtr  = Tcl_GetByteArrayFromObj(cursorObj, &infoSize);
+   int       n;
+   Tcl_Obj **elms;
+   int status = Tcl_ListObjGetElements(interp, obj, &n, &elms);
+   if (status != TCL_OK) {
+      return status;
+   }
 
-   if (infoSize != sizeof *info) {
-      Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid cursor", -1));
+   int ix = 0;
+
+   Tcl_Obj* kindValue
+      = Tcl_ObjGetVar2(interp, cindexCursorKindValuesName, elms[ix], 0);
+   if (kindValue == NULL) {
+      Tcl_SetObjResult(interp,
+                       Tcl_ObjPrintf("invalid cursor kind: %s",
+                                     Tcl_GetStringFromObj(elms[ix], NULL)));
       return TCL_ERROR;
    }
 
-   memcpy(info, infoPtr, sizeof *info);
-
-   if (! cindexIsValidTranslationUnit(info->tuSequenceNumber)) {
+   int kind;
+   status = Tcl_GetIntFromObj(interp, kindValue, &kind);
+   if (status != TCL_OK) {
       Tcl_SetObjResult(interp,
-                       Tcl_NewStringObj("translation unit of the cursor "
-                                        "has been deleted.", -1));
+                       Tcl_NewStringObj("cindex::cursorKindValue "
+                                        "has been corrupted", -1));
       return TCL_ERROR;
+   }
+
+   ++ix;
+
+   int xdata;
+   status = Tcl_GetIntFromObj(interp, elms[ix], &xdata);
+   if (status != TCL_OK) {
+      goto invalid_cursor;
+   }
+   ++ix;
+
+   enum {
+      ndata = sizeof cursor->data / sizeof cursor->data[0]
+   };
+   void *data[ndata];
+   for (int i = 0; i < ndata; ++i) {
+      status = cindexGetPointerFromObj(interp, elms[ix + i], &data[i]);
+      if (status != TCL_OK) {
+         goto invalid_cursor;
+      }
+   }
+   ix += ndata;
+
+   int tuSequenceNumber;
+   status = Tcl_GetIntFromObj(interp, elms[ix], &tuSequenceNumber);
+   if (status != TCL_OK) {
+      goto invalid_cursor;
+   }
+
+   struct cindexTUInfo *info = cindexLookupTranslationUnit(tuSequenceNumber);
+   if (info == NULL) {
+      Tcl_SetObjResult(interp,
+                       Tcl_NewStringObj("translation unit of the given cursor "
+                                        "has already been deleted.", -1));
+      return TCL_ERROR;
+   }
+
+   ++ix;
+
+   cursor->kind = kind;
+   cursor->xdata = xdata;
+   memcpy(cursor->data, data, sizeof data);
+
+   if (infoPtr != NULL) {
+      *infoPtr = info;
    }
 
    return TCL_OK;
+
+ invalid_cursor:
+   Tcl_SetObjResult(interp,
+                    Tcl_NewStringObj("invalid cursor object", -1));
+   return TCL_ERROR;
 }
 
 //---------------------------------------------------- source location mapping
@@ -1089,13 +1165,14 @@ int cindexCreateCXTypeTable(Tcl_Interp *interp)
 
 Tcl_Obj *cindexNewCXTypeObj(Tcl_Interp *interp, CXType type)
 {
-   Tcl_Obj *kindValue = Tcl_NewIntObj(type.kind);
-   Tcl_IncrRefCount(kindValue);
-   Tcl_Obj *kindName = Tcl_ObjGetVar2(interp, cindexTypeKindNamesObj, kindValue,
-                                      TCL_LEAVE_ERR_MSG);
-   Tcl_DecrRefCount(kindValue);
+   Tcl_Obj *kind = Tcl_NewIntObj(type.kind);
+   Tcl_IncrRefCount(kind);
+   Tcl_Obj *kindName = Tcl_ObjGetVar2(interp, cindexTypeKindNamesObj, kind, 0);
+   Tcl_DecrRefCount(kind);
    if (kindName == NULL) {
-      return NULL;
+      Tcl_Panic("%s(%d) corrupted",
+                Tcl_GetStringFromObj(cindexTypeKindNamesObj, NULL),
+                type.kind);
    }
 
    enum {
@@ -1320,15 +1397,11 @@ static int cindexTranslationUnitCursorObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   struct cindexTUInfo *info
-      = (struct cindexTUInfo *)clientData;
+   struct cindexTUInfo *info = (struct cindexTUInfo *)clientData;
 
-   struct cindexCursorInfo cursorInfo;
-   cursorInfo.cursor = clang_getTranslationUnitCursor(info->translationUnit);
-   cursorInfo.tuSequenceNumber = info->sequenceNumber;
-
-   Tcl_SetObjResult(interp, Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
-                                                sizeof cursorInfo));
+   CXCursor  cursor    = clang_getTranslationUnitCursor(info->translationUnit);
+   Tcl_Obj  *cursorObj = cindexNewCursorObj(interp, cursor, info);
+   Tcl_SetObjResult(interp, cursorObj);
 
    return TCL_OK;
 }
@@ -1336,9 +1409,9 @@ static int cindexTranslationUnitCursorObjCmd(ClientData     clientData,
 //--------------------------------------- cindex::<translationUnit instance>
 
 static int cindexTUInstanceObjCmd(ClientData     clientData,
-                                               Tcl_Interp    *interp,
-                                               int            objc,
-                                               Tcl_Obj *const objv[])
+                                  Tcl_Interp    *interp,
+                                  int            objc,
+                                  Tcl_Obj *const objv[])
 {
    if (objc < 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "subcommand");
@@ -1553,11 +1626,11 @@ static int cindexIndexObjCmd(ClientData     clientData,
 
 struct cindexForeachChildInfo
 {
-   Tcl_Interp *interp;
-   Tcl_Obj    *childName;
-   Tcl_Obj    *scriptObj;
-   int         returnCode;
-   int         tuSequenceNumber;
+   Tcl_Interp          *interp;
+   Tcl_Obj             *childName;
+   Tcl_Obj             *scriptObj;
+   int                  returnCode;
+   struct cindexTUInfo *tuInfo;
 };
 
 static enum CXChildVisitResult
@@ -1568,16 +1641,11 @@ cindexForeachChildHelper(CXCursor     cursor,
    struct cindexForeachChildInfo *visitInfo
       = (struct cindexForeachChildInfo *)clientData;
 
-   struct cindexCursorInfo cursorInfo;
-   cursorInfo.cursor           = cursor;
-   cursorInfo.tuSequenceNumber = visitInfo->tuSequenceNumber;
+   Tcl_Obj *cursorObj
+      = cindexNewCursorObj(visitInfo->interp, cursor, visitInfo->tuInfo);
 
-   if (Tcl_ObjSetVar2(visitInfo->interp,
-                      visitInfo->childName,
-                      NULL,
-                      Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
-                                          sizeof cursorInfo),
-                      TCL_LEAVE_ERR_MSG) == NULL) {
+   if (Tcl_ObjSetVar2(visitInfo->interp, visitInfo->childName,
+                      NULL, cursorObj, TCL_LEAVE_ERR_MSG) == NULL) {
       return TCL_ERROR;
    }
 
@@ -1610,23 +1678,22 @@ static int cindexForeachChildObjCmd(ClientData clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[2], &cursorInfo);
+   struct cindexTUInfo *tuInfo;
+   CXCursor             cursor;
+   int status = cindexGetCursorFromObj(interp, objv[2], &cursor, &tuInfo);
    if (status != TCL_OK) {
       return status;
    }
 
    struct cindexForeachChildInfo visitInfo = {
-      .interp           = interp,
-      .childName        = objv[1],
-      .scriptObj        = objv[3],
-      .returnCode       = TCL_OK,
-      .tuSequenceNumber = cursorInfo.tuSequenceNumber,
+      .interp     = interp,
+      .childName  = objv[1],
+      .scriptObj  = objv[3],
+      .returnCode = TCL_OK,
+      .tuInfo     = tuInfo,
    };
 
-   if (clang_visitChildren(cursorInfo.cursor,
-                           cindexForeachChildHelper,
-                           (CXClientData)&visitInfo)) {
+   if (clang_visitChildren(cursor, cindexForeachChildHelper, &visitInfo)) {
       return visitInfo.returnCode;
    }
 
@@ -1655,16 +1722,15 @@ static int cindexCursorEqualsObjCmd(ClientData clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo[2];
-   for (int i = 1, cursor = 0; i < 3; ++i, ++cursor) {
-      int status = cindexValidateCursor(interp, objv[i], &cursorInfo[cursor]);
+   CXCursor cursors[2];
+   for (int i = 1, ix = 0; i < 3; ++i, ++ix) {
+      int status = cindexGetCursorFromObj(interp, objv[i], &cursors[ix], NULL);
       if (status != TCL_OK) {
          return status;
       }
    }
 
-   unsigned eq
-      = clang_equalCursors(cursorInfo[0].cursor, cursorInfo[1].cursor);
+   unsigned eq = clang_equalCursors(cursors[0], cursors[1]);
    Tcl_SetObjResult(interp, Tcl_NewIntObj(eq));
 
    return TCL_OK;
@@ -1682,45 +1748,14 @@ static int cindexCursorHashObjCmd(ClientData clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
    if (status != TCL_OK) {
       return status;
    }
 
-   unsigned hash = clang_hashCursor(cursorInfo.cursor);
+   unsigned hash = clang_hashCursor(cursor);
    Tcl_SetObjResult(interp, Tcl_NewLongObj(hash));
-
-   return TCL_OK;
-}
-
-//----------------------------------------------------- cindex::cursor::kind
-
-static int cindexCursorKindObjCmd(ClientData clientData,
-                                  Tcl_Interp *interp,
-                                  int objc,
-                                  Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   static Tcl_Obj *name = NULL;
-   if (name == NULL) {
-      name = Tcl_NewStringObj("cindex::cursorKind", -1);
-      Tcl_IncrRefCount(name);
-   }
-
-   enum CXCursorKind kind = clang_getCursorKind(cursorInfo.cursor);
-   Tcl_SetObjResult(interp,
-                    Tcl_ObjGetVar2(interp, name, Tcl_NewIntObj(kind), 0));
 
    return TCL_OK;
 }
@@ -1737,13 +1772,13 @@ static int cindexCursorIsNullObjCmd(ClientData clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
    if (status != TCL_OK) {
       return status;
    }
 
-   int result = clang_Cursor_isNull(cursorInfo.cursor);
+   int result = clang_Cursor_isNull(cursor);
    Tcl_SetObjResult(interp, Tcl_NewIntObj(result));
 
    return TCL_OK;
@@ -1761,8 +1796,8 @@ static int cindexCursorIsGenericObjCmd(ClientData clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
    if (status != TCL_OK) {
       return status;
    }
@@ -1771,7 +1806,7 @@ static int cindexCursorIsGenericObjCmd(ClientData clientData,
 
    ProcType proc = (ProcType)clientData;
 
-   enum CXCursorKind kind = clang_getCursorKind(cursorInfo.cursor);
+   enum CXCursorKind kind = clang_getCursorKind(cursor);
    unsigned result = proc(kind);
    Tcl_SetObjResult(interp, Tcl_NewLongObj(result));
 
@@ -1798,8 +1833,8 @@ static int cindexCursorGenericEnumObjCmd(ClientData clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
    if (status != TCL_OK) {
       return status;
    }
@@ -1808,7 +1843,7 @@ static int cindexCursorGenericEnumObjCmd(ClientData clientData,
       = (struct cindexCursorGenericEnumInfo *)clientData;
 
    cindexCursorGenericEnumProc proc = info->proc;
-   int value = proc(cursorInfo.cursor);
+   int value = proc(cursor);
 
    return cindexGetEnumLabel(interp, info->labels, value);
 }
@@ -1825,26 +1860,11 @@ static int cindexCursorTranslationUnitObjCmd(ClientData clientData,
       return TCL_ERROR;
    }
 
-   int infoSize = 0;
-   unsigned char *infoPtr = Tcl_GetByteArrayFromObj(objv[1], &infoSize);
-
-   struct cindexCursorInfo cursorInfo;
-
-   if (infoSize != sizeof cursorInfo) {
-      Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid cursor", -1));
-      return TCL_ERROR;
-   }
-
-   memcpy(&cursorInfo, infoPtr, sizeof cursorInfo);
-
-   struct cindexTUInfo *tuInfo
-      = cindexLookupTranslationUnit(cursorInfo.tuSequenceNumber);
-
-   if (tuInfo == NULL) {
-      Tcl_SetObjResult(interp,
-                       Tcl_NewStringObj("translation unit of the cursor "
-                                        "has been deleted.", -1));
-      return TCL_ERROR;
+   struct cindexTUInfo *tuInfo;
+   CXCursor             cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, &tuInfo);
+   if (status != TCL_OK) {
+      return status;
    }
 
    Tcl_SetObjResult(interp, tuInfo->name);
@@ -1864,16 +1884,16 @@ static int cindexCursorSemanticParentObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   struct cindexTUInfo *tuInfo;
+   CXCursor             cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, &tuInfo);
    if (status != TCL_OK) {
       return status;
    }
 
-   cursorInfo.cursor = clang_getCursorSemanticParent(cursorInfo.cursor);
-
-   Tcl_SetObjResult(interp, Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
-                                                sizeof cursorInfo));
+   CXCursor  parentCursor = clang_getCursorSemanticParent(cursor);
+   Tcl_Obj  *parentObj    = cindexNewCursorObj(interp, parentCursor, tuInfo);
+   Tcl_SetObjResult(interp, parentObj);
 
    return TCL_OK;
 }
@@ -1890,17 +1910,16 @@ static int cindexCursorLexicalParentObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   struct cindexTUInfo *tuInfo;
+   CXCursor             cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, &tuInfo);
    if (status != TCL_OK) {
       return status;
    }
 
-   cursorInfo.cursor = clang_getCursorLexicalParent(cursorInfo.cursor);
-
-   Tcl_SetObjResult(interp,
-                    Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
-                                        sizeof cursorInfo));
+   CXCursor  parentCursor = clang_getCursorLexicalParent(cursor);
+   Tcl_Obj  *parentObj    = cindexNewCursorObj(interp, parentCursor, tuInfo);
+   Tcl_SetObjResult(interp, parentObj);
 
    return TCL_OK;
 }
@@ -1917,30 +1936,24 @@ static int cindexCursorOverriddenCursorsObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   struct cindexTUInfo *tuInfo;
+   CXCursor             cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, &tuInfo);
    if (status != TCL_OK) {
       return status;
    }
 
    CXCursor *overridden = NULL;
    unsigned numOverridden = 0;
-   clang_getOverriddenCursors(cursorInfo.cursor, &overridden, &numOverridden);
+   clang_getOverriddenCursors(cursor, &overridden, &numOverridden);
 
-   Tcl_Obj *result = Tcl_NewObj();
-   Tcl_SetObjResult(interp, result);
-
-   for (int i = 0; i < numOverridden && status == TCL_OK; ++i) {
-      struct cindexCursorInfo newCursorInfo;
-      newCursorInfo.cursor = overridden[i];
-      newCursorInfo.tuSequenceNumber = cursorInfo.tuSequenceNumber;
-
-      Tcl_Obj *cursorObj = Tcl_NewByteArrayObj((unsigned char *)&newCursorInfo,
-                                               sizeof newCursorInfo);
-      status = Tcl_ListObjAppendElement(interp, result, cursorObj);
+   Tcl_Obj **results = (Tcl_Obj **)Tcl_Alloc(sizeof(Tcl_Obj *) * numOverridden);
+   for (int i = 0; i < numOverridden; ++i) {
+      results[i] = cindexNewCursorObj(interp, overridden[i], tuInfo);
    }
-
    clang_disposeOverriddenCursors(overridden);
+   Tcl_SetObjResult(interp, Tcl_NewListObj(numOverridden, results));
+   Tcl_Free((char *)results);
 
    return status;
 }
@@ -1957,13 +1970,13 @@ static int cindexCursorIncludedFileObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
    if (status != TCL_OK) {
       return status;
    }
 
-   CXFile cxfile = clang_getIncludedFile(cursorInfo.cursor);
+   CXFile cxfile = clang_getIncludedFile(cursor);
    CXString filenameStr = clang_getFileName(cxfile);
    const char *filenameCStr = clang_getCString(filenameStr);
    Tcl_SetObjResult(interp, Tcl_NewStringObj(filenameCStr, -1));
@@ -1984,8 +1997,8 @@ static int cindexCursorRangeObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
    if (status != TCL_OK) {
       return status;
    }
@@ -1993,17 +2006,19 @@ static int cindexCursorRangeObjCmd(ClientData     clientData,
    typedef void (*CursorProc)(CXSourceLocation,
                               CXFile*, unsigned *, unsigned *, unsigned *);
 
-   CXSourceRange range = clang_getCursorExtent(cursorInfo.cursor);
-   CursorProc proc = (CursorProc)clientData;
+   CXSourceRange range = clang_getCursorExtent(cursor);
+   CursorProc    proc  = (CursorProc)clientData;
 
-   CXSourceLocation locs[2];
+   enum {
+      nlocs = 2
+   };
+   CXSourceLocation locs[nlocs];
    locs[0] = clang_getRangeStart(range);
    locs[1] = clang_getRangeEnd(range);
 
-   Tcl_Obj *result = Tcl_NewObj();
-   Tcl_SetObjResult(interp, result);
+   Tcl_Obj *locObjs[nlocs];
 
-   for (int i = 0; i < 2; ++i) {
+   for (int i = 0; i < nlocs; ++i) {
 
       CXFile   file;
       unsigned line;
@@ -2012,27 +2027,27 @@ static int cindexCursorRangeObjCmd(ClientData     clientData,
 
       proc(locs[i], &file, &line, &column, &offset);
 
-      Tcl_Obj *elm = Tcl_NewObj();
-      Tcl_ListObjAppendElement(NULL, elm, cindexFile);
+      Tcl_Obj *elms[4];
+      int      nelms = 0;
 
-      CXString cxFileName = clang_getFileName(file);
-      const char *filename = clang_getCString(cxFileName);
-      Tcl_ListObjAppendElement(NULL, elm, cindexNewFileNameObj(filename));
+      CXString    cxFileName = clang_getFileName(file);
+      const char *filename   = clang_getCString(cxFileName);
+      elms[nelms]            = cindexNewFileNameObj(filename);
       clang_disposeString(cxFileName);
+      ++nelms;
 
-      Tcl_ListObjAppendElement(NULL, elm, cindexLine);
-      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(line));
+      elms[nelms++] = Tcl_NewLongObj(line);
+      elms[nelms++] = Tcl_NewLongObj(column);
+      elms[nelms++] = Tcl_NewLongObj(offset);
 
-      Tcl_ListObjAppendElement(NULL, elm, cindexColumn);
-      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(column));
-                      
-      Tcl_ListObjAppendElement(NULL, elm, cindexOffset);
-      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(offset));
+      assert(nelms == sizeof elms / sizeof elms[0]);
 
-      Tcl_ListObjAppendElement(NULL, result, elm);
+      locObjs[i] = Tcl_NewListObj(nelms, elms);
    }
 
-   return status;
+   Tcl_SetObjResult(interp, Tcl_NewListObj(nlocs, locObjs));
+
+   return TCL_OK;
 }
 
 static int cindexCursorPresumedLocationObjCmd(ClientData     clientData,
@@ -2045,43 +2060,45 @@ static int cindexCursorPresumedLocationObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
    if (status != TCL_OK) {
       return status;
    }
 
-   CXSourceRange range = clang_getCursorExtent(cursorInfo.cursor);
+   CXSourceRange range = clang_getCursorExtent(cursor);
 
-   CXSourceLocation locs[2];
+   enum {
+      nlocs = 2
+   };
+
+   CXSourceLocation locs[nlocs];
    locs[0] = clang_getRangeStart(range);
    locs[1] = clang_getRangeEnd(range);
 
-   Tcl_Obj *result = Tcl_NewObj();
-   Tcl_SetObjResult(interp, result);
+   Tcl_Obj *locObjs[nlocs];
 
-   for (int i = 0; i < 2; ++i) {
+   for (int i = 0; i < nlocs; ++i) {
       CXString cxFilename;
       unsigned line;
       unsigned column;
       clang_getPresumedLocation(locs[i], &cxFilename, &line, &column);
 
-      Tcl_Obj *elm = Tcl_NewObj();
-      Tcl_ListObjAppendElement(NULL, elm, cindexFile);
+      Tcl_Obj *elms[3];
+      int      nelms = 0;
 
       const char *filename = clang_getCString(cxFilename);
-      Tcl_ListObjAppendElement(NULL, elm, cindexNewFileNameObj(filename));
+      elms[nelms++] = cindexNewFileNameObj(filename);
       clang_disposeString(cxFilename);
 
-      Tcl_ListObjAppendElement(NULL, elm, cindexLine);
-      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(line));
+      elms[nelms++] = Tcl_NewLongObj(line);
+      elms[nelms++] = Tcl_NewLongObj(column);
 
-      Tcl_ListObjAppendElement(NULL, elm, cindexColumn);
-      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(column));
-
-      Tcl_ListObjAppendElement(NULL, result, elm);
+      locObjs[i] = Tcl_NewListObj(nelms, elms);
    }
-                      
+
+   Tcl_SetObjResult(interp, Tcl_NewListObj(nlocs, locObjs));
+
    return TCL_OK;
 }
 
@@ -2097,13 +2114,13 @@ static int cindexCursorIsInSystemHeaderObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
    if (status != TCL_OK) {
       return status;
    }
 
-   CXSourceLocation pos = clang_getCursorLocation(cursorInfo.cursor);
+   CXSourceLocation pos = clang_getCursorLocation(cursor);
    int value = clang_Location_isInSystemHeader(pos);
 
    Tcl_SetObjResult(interp, Tcl_NewIntObj(value));
@@ -2123,13 +2140,13 @@ static int cindexCursorIsInMainFileObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
    if (status != TCL_OK) {
       return status;
    }
 
-   CXSourceLocation pos = clang_getCursorLocation(cursorInfo.cursor);
+   CXSourceLocation pos = clang_getCursorLocation(cursor);
    int value = clang_Location_isFromMainFile(pos);
 
    Tcl_SetObjResult(interp, Tcl_NewIntObj(value));
@@ -2149,19 +2166,14 @@ static int cindexCursorTypeObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
    if (status != TCL_OK) {
       return status;
    }
 
-   CXType cxtype = clang_getCursorType(cursorInfo.cursor);
-
+   CXType   cxtype = clang_getCursorType(cursor);
    Tcl_Obj *result = cindexNewCXTypeObj(interp, cxtype);
-   if (result == NULL) {
-      return TCL_ERROR;
-   }
-
    Tcl_SetObjResult(interp, result);
 
    return TCL_OK;
@@ -2179,19 +2191,14 @@ static int cindexCursorTypedefDeclUnderlyingTypeObjCmd(ClientData     clientData
       return TCL_ERROR;
    }
 
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
    if (status != TCL_OK) {
       return status;
    }
 
-   CXType cxtype = clang_getTypedefDeclUnderlyingType(cursorInfo.cursor);
-
+   CXType   cxtype = clang_getTypedefDeclUnderlyingType(cursor);
    Tcl_Obj *result = cindexNewCXTypeObj(interp, cxtype);
-   if (result == NULL) {
-      return TCL_ERROR;
-   }
-
    Tcl_SetObjResult(interp, result);
 
    return TCL_OK;
@@ -2334,8 +2341,6 @@ int Cindex_Init(Tcl_Interp *interp)
         cindexCursorEqualsObjCmd },
       { "hash",
         cindexCursorHashObjCmd },
-      { "kind",
-        cindexCursorKindObjCmd },
       { "linkage",
         cindexCursorGenericEnumObjCmd, &cursorLinkageInfo },
       { "availability",

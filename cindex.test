@@ -113,7 +113,6 @@ test cindex_cursor-0.0 "cursor / alpha omega" \
     set root [mytu cursor]
     cursor equals $root $root
     cursor hash $root
-    cursor kind $root
     cursor linkage $root
     cursor availability $root
     cursor language $root
