@@ -32,8 +32,11 @@
 #include <clang-c/Index.h>
 
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <inttypes.h>
+#include <limits.h>
 
 enum {
    TCL_RECURSE = 5
@@ -41,40 +44,35 @@ enum {
 
 //------------------------------------------------------------------ utilities
 
-static Tcl_Obj *cindexNone;        // = "-none"
-static Tcl_Obj *cindexFile;
-static Tcl_Obj *cindexLine;
-static Tcl_Obj *cindexColumn;
-static Tcl_Obj *cindexOffset;
-
-struct cindexSubcommand
+struct cindexCommand
 {
-   const char  *name;
-   int	      (*proc)(ClientData, Tcl_Interp *, int, Tcl_Obj *const []);
+   const char     *name;
+   Tcl_ObjCmdProc *proc;
+   ClientData      clientData;
 };
 
 static int
-cindexDispatchSubcommand(ClientData                     clientData,
-                         Tcl_Interp                    *interp,
-                         int                            objc,
-                         Tcl_Obj *const                 objv[],
-                         int                            n,
-                         const struct cindexSubcommand *subcommands)
+cindexDispatchSubcommand(ClientData                  clientData,
+                         Tcl_Interp                 *interp,
+                         int                         objc,
+                         Tcl_Obj *const              objv[],
+                         const struct cindexCommand *subcommands)
 {
    const char *cmd = Tcl_GetStringFromObj(objv[1], NULL);
 
-   for (int i = 0; i < n; ++i) {
+   for (int i = 0; subcommands[i].name != NULL; ++i) {
       if (strcmp(subcommands[i].name, cmd) == 0) {
          return subcommands[i].proc(clientData, interp, objc - 1, objv + 1);
       }
    }
 
-   Tcl_Obj *result = Tcl_ObjPrintf("unknown subcommand \"%s\": must be ", cmd);
+   Tcl_Obj *result
+      = Tcl_ObjPrintf("unknown subcommand \"%s\": must be ", cmd);
    Tcl_SetObjResult(interp, result);
 
-   for (int i = 0; i < n; ++i) {
+   for (int i = 0; subcommands[i].name != NULL; ++i) {
       if (i != 0) {
-         if (i < n - 1) {
+         if (subcommands[i + 1].name != NULL) {
             Tcl_AppendToObj(result, ", ", -1);
          } else {
             Tcl_AppendToObj(result, ", or ", -1);
@@ -84,6 +82,162 @@ cindexDispatchSubcommand(ClientData                     clientData,
    }
 
    return TCL_ERROR;
+}
+
+static void
+cindexCreateAndExportCommands(Tcl_Interp           *interp,
+                              const char           *commandNameFormat,
+                              struct cindexCommand *command)
+{
+   for (int i = 0; command[i].name != NULL; ++i) {
+      char buffer[128];
+      if (sizeof buffer
+          <= snprintf(buffer, sizeof buffer,
+                      commandNameFormat, command[i].name)) {
+         fprintf(stderr, "command name buffer overflow: %s\n",
+                 buffer);
+         abort();
+      }
+      Tcl_Command token
+         = Tcl_CreateObjCommand(interp, buffer, command[i].proc,
+                                command[i].clientData, NULL);
+      Tcl_CmdInfo info;
+      if (! Tcl_GetCommandInfoFromToken(token, &info)) {
+         fprintf(stderr, "Tcl_GetCommandInfoFromToken failed: %s\n", buffer);
+         abort();
+      }
+      Tcl_Export(interp, info.namespacePtr, command[i].name, 0);
+   }
+}
+
+struct cindexNameValuePair
+{
+   const char *name;
+   int         value;
+};
+
+static int
+cindexCreateNameValueTable(Tcl_Interp                        *interp,
+                           const char                        *varNamePrefix,
+                           Tcl_Obj                          **nameArrayNameOut,
+                           Tcl_Obj                          **valueArrayNameOut,
+                           const struct cindexNameValuePair  *table)
+{
+   Tcl_Obj *nameArrayName  = Tcl_ObjPrintf("%sNames", varNamePrefix);
+   Tcl_Obj *valueArrayName = Tcl_ObjPrintf("%sValues", varNamePrefix);
+
+   Tcl_IncrRefCount(nameArrayName);
+   Tcl_IncrRefCount(valueArrayName);
+
+   int status = TCL_OK;
+   for (int i = 0; status == TCL_OK && table[i].name != NULL; ++i) {
+
+      Tcl_Obj *value = Tcl_NewIntObj(table[i].value);
+      Tcl_Obj *name  = Tcl_NewStringObj(table[i].name, -1);
+
+      Tcl_IncrRefCount(value);
+      Tcl_IncrRefCount(name);
+
+      if (Tcl_ObjSetVar2(interp, nameArrayName,
+                         value, name, TCL_LEAVE_ERR_MSG) == NULL
+          || Tcl_ObjSetVar2(interp, valueArrayName,
+                            name, value, TCL_LEAVE_ERR_MSG) == NULL) {
+         status = TCL_ERROR;
+      }
+
+      Tcl_DecrRefCount(value);
+      Tcl_DecrRefCount(name);
+   }
+
+   if (status == TCL_OK) {
+      *valueArrayNameOut = valueArrayName;
+      *nameArrayNameOut  = nameArrayName;
+   } else {
+      Tcl_DecrRefCount(valueArrayName);
+      Tcl_DecrRefCount(nameArrayName);
+   }
+
+   return status;
+}
+
+//-------------------------------------------------------------- integer types
+
+static Tcl_Obj *cindexNewUintmaxObj(uintmax_t value)
+{
+   if (value <= LONG_MAX) {
+      return Tcl_NewLongObj(value);
+   }
+
+   mp_int acc;
+   mp_init(&acc);
+
+   mp_int digit;
+   mp_init(&digit);
+
+   int       digit_bit  = 16;
+   uintmax_t digit_mask = (1UL << digit_bit) - 1;
+
+   for (int i = 0; value != 0; i += digit_bit) {
+      mp_set(&digit, value & digit_mask);
+      mp_lshd(&digit, i);
+      mp_or(&digit, &acc, &acc);
+      value >>= digit_bit;
+   }
+
+   Tcl_Obj *result = Tcl_NewBignumObj(&acc);
+
+   mp_clear(&acc);
+   mp_clear(&digit);
+
+   return result;
+}
+
+static Tcl_Obj *cindexNewPointerObj(void *ptr)
+{
+   return cindexNewUintmaxObj((uintptr_t)ptr);
+}
+
+static int
+cindexGetPointerFromObj(Tcl_Interp *interp, Tcl_Obj *obj, void **ptrOut)
+{
+   long value;
+   if (Tcl_GetLongFromObj(NULL, obj, &value) == TCL_OK) {
+      *ptrOut = (void *)value;
+      return TCL_OK;
+   }
+
+   mp_int bvalue;
+   int status = Tcl_GetBignumFromObj(interp, obj, &bvalue);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   int       digit_bit  = 16;
+   uintptr_t digit_mask = (1UL << digit_bit) - 1;
+
+   uintptr_t result = 0;
+   for (int i = 0; i < sizeof result * CHAR_BIT; i += digit_bit) {
+      uintptr_t digit = (uintptr_t)bvalue.dp[0] & digit_mask;
+      mp_rshd(&bvalue, digit_bit);
+      result |= digit << i;
+   }
+
+   int iszero = mp_iszero(&bvalue);
+
+   mp_clear(&bvalue);
+
+   if (! iszero) {
+      if (interp != NULL) {
+         Tcl_SetObjResult(interp,
+                          Tcl_NewStringObj("the given integer is too large "
+                                           "as a pointer.", -1));
+      }
+      return TCL_ERROR;
+   }
+
+   *ptrOut = (void *)result;
+
+   return TCL_OK;
 }
 
 //----------------------------------------------------------------- enum label
@@ -133,13 +287,15 @@ static struct cindexEnumLabels cindexAvailabilityLabels = {
    }
 };
 
-static int cindexGetAvailabilityObj(Tcl_Interp                *interp,
+static int cindexGetAvailabilityObj(Tcl_Interp              *interp,
                                     enum CXAvailabilityKind  kind)
 {
    return cindexGetEnumLabel(interp, &cindexAvailabilityLabels, kind);
 }
 
 //-------------------------------------------------------- bit mask operations
+
+static Tcl_Obj *cindexNone;        // = "-none"
 
 struct cindexBitMask
 {
@@ -251,64 +407,6 @@ static int cindexBitMaskToString(Tcl_Interp           *interp,
    return status;
 }
 
-//------------------------------------------------------- child list operations
-
-static void
-cindexAddChild(Tcl_Interp *interp, Tcl_Obj **list, Tcl_Obj *child)
-{
-   if (Tcl_IsShared(*list)) {
-      *list = Tcl_DuplicateObj(*list);
-   }
-
-   int status = Tcl_ListObjAppendElement(interp, *list, child);
-
-   if (status != TCL_OK) {
-      Tcl_BackgroundException(interp, status);
-   }
-}
-
-static void
-cindexRemoveChild(Tcl_Interp *interp, Tcl_Obj **list, Tcl_Obj *child)
-{
-   if (Tcl_IsShared(*list)) {
-      *list = Tcl_DuplicateObj(*list);
-   }
-
-   int n       = 0;
-   int status  = Tcl_ListObjLength(interp, *list, &n);
-   if (status != TCL_OK) {
-      goto end;
-   }
-
-   int         child_strlen = 0;
-   const char *child_str    = Tcl_GetStringFromObj(child, &child_strlen);
-
-   for (int i = n - 1; 0 <= i; --i) {
-
-      Tcl_Obj *elm = NULL;
-      status       = Tcl_ListObjIndex(interp, *list, i, &elm);
-      if (status != TCL_OK) {
-         break;
-      }
-
-      int         elm_strlen = 0;
-      const char *elm_str    = Tcl_GetStringFromObj(elm, &elm_strlen);
-
-      if (elm_str == child_str
-          || (elm_strlen == child_strlen
-              && memcmp(elm_str, child_str, elm_strlen) == 0)) {
-         status = Tcl_ListObjReplace(interp, *list, i, 1, 0, NULL);
-         break;
-      }
-
-   }
-
- end:
-   if (status != TCL_OK) {
-      Tcl_BackgroundException(interp, status);
-   }
-}
-
 //-------------------------------------------------------------- index mapping
 
 /** The information associated to an index Tcl command.
@@ -320,16 +418,19 @@ struct cindexIndexInfo
    CXIndex     index;
 };
 
-static void
-cindexIndexAddChild(struct cindexIndexInfo *info, Tcl_Obj *child)
+static struct cindexIndexInfo *
+cindexCreateIndexInfo(Tcl_Interp *interp, CXIndex index)
 {
-   cindexAddChild(info->interp, &info->children, child);
-}
+   struct cindexIndexInfo *info
+      = (struct cindexIndexInfo *)Tcl_Alloc(sizeof *info);
 
-static void
-cindexIndexRemoveChild(struct cindexIndexInfo *info, Tcl_Obj *child)
-{
-   cindexRemoveChild(info->interp, &info->children, child);
+   info->interp   = interp;
+   info->children = Tcl_NewObj();
+   info->index    = index;
+
+   Tcl_IncrRefCount(info->children);
+
+   return info;
 }
 
 /** A callback function called when an index Tcl command is deleted.
@@ -370,28 +471,147 @@ static void cindexIndexDeleteProc(ClientData clientData)
    Tcl_Free((char *)info);
 }
 
+static void
+cindexIndexAddChild(struct cindexIndexInfo *info, Tcl_Obj *child)
+{
+   Tcl_Interp *interp = info->interp;
+
+   Tcl_Obj *children = info->children;
+   if (Tcl_IsShared(children)) {
+      Tcl_Obj *newChildren = Tcl_DuplicateObj(children);
+      Tcl_DecrRefCount(children);
+      Tcl_IncrRefCount(newChildren);
+      info->children = children = newChildren;
+   }
+
+   int status = Tcl_ListObjAppendElement(interp, children, child);
+
+   if (status != TCL_OK) {
+      Tcl_BackgroundException(interp, status);
+   }
+}
+
+static void
+cindexIndexRemoveChild(struct cindexIndexInfo *info, Tcl_Obj *child)
+{
+   Tcl_Interp *interp = info->interp;
+
+   Tcl_Obj *children = info->children;
+   if (Tcl_IsShared(children)) {
+      Tcl_Obj *newChildren = Tcl_DuplicateObj(children);
+      Tcl_DecrRefCount(children);
+      Tcl_IncrRefCount(newChildren);
+      info->children = children = newChildren;
+   }
+
+   int n       = 0;
+   int status  = Tcl_ListObjLength(interp, children, &n);
+   if (status != TCL_OK) {
+      goto end;
+   }
+
+   int         child_strlen = 0;
+   const char *child_str    = Tcl_GetStringFromObj(child, &child_strlen);
+   int         found        = 0;
+   for (int i = n - 1; 0 <= i; --i) {
+
+      Tcl_Obj *elm = NULL;
+      status       = Tcl_ListObjIndex(interp, children, i, &elm);
+      if (status != TCL_OK) {
+         break;
+      }
+
+      int         elm_strlen = 0;
+      const char *elm_str    = Tcl_GetStringFromObj(elm, &elm_strlen);
+
+      if (elm_str == child_str
+          || (elm_strlen == child_strlen
+              && memcmp(elm_str, child_str, elm_strlen) == 0)) {
+         found = 1;
+         status = Tcl_ListObjReplace(interp, children, i, 1, 0, NULL);
+         break;
+      }
+
+   }
+
+   if (status == TCL_OK && ! found) {
+      fprintf(stderr,
+              "child %s doesn't exist in the children list\n", child_str);
+      abort();
+   }
+
+ end:
+   if (status != TCL_OK) {
+      Tcl_BackgroundException(interp, status);
+   }
+}
+
 //--------------------------------------------------- translation unit mapping
 
-struct cindexTranslationUnitInfo
+struct cindexTUInfo
 {
-   struct cindexTranslationUnitInfo *next;
-   struct cindexIndexInfo           *parent;
-   Tcl_Obj                          *name;
-   CXTranslationUnit                 translationUnit;
-   int                               sequenceNumber;
+   struct cindexTUInfo    *next;
+   struct cindexIndexInfo *parent;
+   Tcl_Obj                *name;
+   CXTranslationUnit       translationUnit;
+   int                     sequenceNumber;
 };
 
-static struct cindexTranslationUnitInfo *translationUnitHashTable[256];
+static struct cindexTUInfo *cindexTUHashTable[256];
 
-static int cindexTranslationUnitNextSequenceNumber = 0;
+static struct cindexTUInfo *
+cindexCreateTUInfo(struct cindexIndexInfo *parent,
+                   Tcl_Obj                *tuName,
+                   CXTranslationUnit       tu)
+{
+   static int nextNumber = 0;
 
-static struct cindexTranslationUnitInfo *
+   struct cindexTUInfo *info = (struct cindexTUInfo *)Tcl_Alloc(sizeof *info);
+
+   info->parent          = parent;
+   info->name            = tuName;
+   info->translationUnit = tu;
+   info->sequenceNumber  = nextNumber++;
+
+   Tcl_IncrRefCount(tuName);
+
+   int hashTableSize = sizeof cindexTUHashTable / sizeof cindexTUHashTable[0];
+   int hash = info->sequenceNumber % hashTableSize;
+   info->next = cindexTUHashTable[hash];
+   cindexTUHashTable[hash] = info;
+
+   cindexIndexAddChild(parent, tuName);
+
+   return info;
+}
+
+static void cindexTUDeleteProc(ClientData clientData)
+{
+   struct cindexTUInfo *info = (struct cindexTUInfo *)clientData;
+
+   cindexIndexRemoveChild(info->parent, info->name);
+
+   Tcl_DecrRefCount(info->name);
+   clang_disposeTranslationUnit(info->translationUnit);
+
+   int hashTableSize = sizeof cindexTUHashTable / sizeof cindexTUHashTable[0];
+   int hash = info->sequenceNumber % hashTableSize;
+   struct cindexTUInfo **prev = &cindexTUHashTable[hash];
+   while (*prev != info) {
+      prev = &info->next;
+   }
+   *prev = info->next;
+
+   Tcl_Free((char *)info);
+}
+
+static struct cindexTUInfo *
 cindexLookupTranslationUnit(int sequenceNumber)
 {
    int hashTableSize =
-      sizeof translationUnitHashTable / sizeof translationUnitHashTable[0];
+      sizeof cindexTUHashTable / sizeof cindexTUHashTable[0];
    int hash = sequenceNumber % hashTableSize;
-   for (struct cindexTranslationUnitInfo *p = translationUnitHashTable[hash];
+   for (struct cindexTUInfo *p = cindexTUHashTable[hash];
         p != NULL;
         p = p->next) {
       if (p->sequenceNumber == sequenceNumber) {
@@ -407,1085 +627,9 @@ static int cindexIsValidTranslationUnit(int sequenceNumber)
    return cindexLookupTranslationUnit(sequenceNumber) != NULL;
 }
 
-static void cindexTranslationUnitDeleteProc(ClientData clientData)
-{
-   struct cindexTranslationUnitInfo *info
-      = (struct cindexTranslationUnitInfo *)clientData;
-
-   cindexIndexRemoveChild(info->parent, info->name);
-
-   Tcl_DecrRefCount(info->name);
-   clang_disposeTranslationUnit(info->translationUnit);
-
-   int hashTableSize =
-      sizeof translationUnitHashTable / sizeof translationUnitHashTable[0];
-   int hash = info->sequenceNumber % hashTableSize;
-   struct cindexTranslationUnitInfo **prev = &translationUnitHashTable[hash];
-   while (*prev != info) {
-      prev = &info->next;
-   }
-   *prev = info->next;
-
-   Tcl_Free((char *)info);
-}
-
 //------------------------------------------------------------- cursor mapping
 
-struct cindexCursorInfo
-{
-   CXCursor cursor;
-   int      tuSequenceNumber;
-};
-
-static int cindexValidateCursor(Tcl_Interp		*interp,
-                                Tcl_Obj                 *cursorObj,
-                                struct cindexCursorInfo *info)
-{
-   int            infoSize = 0;
-   unsigned char *infoPtr  = Tcl_GetByteArrayFromObj(cursorObj, &infoSize);
-
-   if (infoSize != sizeof *info) {
-      Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid cursor", -1));
-      return TCL_ERROR;
-   }
-
-   memcpy(info, infoPtr, sizeof *info);
-
-   if (! cindexIsValidTranslationUnit(info->tuSequenceNumber)) {
-      Tcl_SetObjResult(interp,
-                       Tcl_NewStringObj("translation unit of the cursor "
-                                        "has been deleted.", -1));
-      return TCL_ERROR;
-   }
-
-   return TCL_OK;
-}
-
-//---------------------------------------------------- source location mapping
-
-static Tcl_Obj *fileNameCache[64];
-
-static unsigned long cindexFileNameHash(const char *str)
-{
-   unsigned long        hash = 0;
-   int                  c;
-   const unsigned char *cp = (const unsigned char *)str;
-
-   while ( (c = *cp++) ) {
-      hash = c + (hash << 6) + (hash << 16) - hash;
-   }
-
-   return hash;
-}
-
-static Tcl_Obj *cindexNewFileNameObj(const char *filenameCstr)
-{
-   int hash = cindexFileNameHash(filenameCstr)
-      % (sizeof fileNameCache / sizeof fileNameCache[0]);
-
-   Tcl_Obj *candidate = fileNameCache[hash];
-   if (candidate != NULL) {
-      if (strcmp(Tcl_GetStringFromObj(candidate, NULL), filenameCstr) == 0) {
-         return candidate;
-      }
-      Tcl_DecrRefCount(candidate);
-   }
-
-   Tcl_Obj *result = Tcl_NewStringObj(filenameCstr, -1);
-   fileNameCache[hash] = result;
-   Tcl_IncrRefCount(result);
-
-   return result;
-}
-
-//---------------------------------- cindex::<translationUnit instance> save
-
-static int cindexTranslationUnitSaveObjCmd(ClientData     clientData,
-                                           Tcl_Interp    *interp,
-                                           int            objc,
-                                           Tcl_Obj *const objv[])
-{
-   if (objc < 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "filename");
-      return TCL_ERROR;
-   }
-
-   const char *filename = Tcl_GetStringFromObj(objv[1], NULL);
-
-   struct cindexTranslationUnitInfo *info
-      = (struct cindexTranslationUnitInfo *)clientData;
-
-   int status = clang_saveTranslationUnit(info->translationUnit, filename, 0);
-   switch (status) {
-
-   case CXSaveError_None:
-      break;
-
-   case CXSaveError_Unknown:
-      Tcl_SetObjResult(interp,
-                       Tcl_ObjPrintf("an unknown error occurred "
-                                     "while attempting to save to \"%s\"",
-                                     filename));
-      return TCL_ERROR;
-
-   case CXSaveError_TranslationErrors:
-      Tcl_SetObjResult(interp,
-                       Tcl_ObjPrintf("errors during translation prevented "
-                                     "the attempt to save \"%s\"",
-                                     Tcl_GetStringFromObj(info->name, NULL)));
-      return TCL_ERROR;
-
-   case CXSaveError_InvalidTU:
-      Tcl_SetObjResult(interp,
-                       Tcl_ObjPrintf("invalid translation unit \"%s\"",
-                                     Tcl_GetStringFromObj(info->name, NULL)));
-      return TCL_ERROR;
-
-   default:
-      Tcl_SetObjResult(interp,
-                       Tcl_ObjPrintf("unknown error code is returned by "
-                                     "clang_saveTranslationUnit()"));
-      return TCL_ERROR;
-   }
-
-   return TCL_OK;
-}
-
-//------------------------------- cindex::<translationUnit instance> reparse
-
-static int cindexTranslationUnitReparseObjCmd(ClientData     clientData,
-                                              Tcl_Interp    *interp,
-                                              int            objc,
-                                              Tcl_Obj *const objv[])
-{
-   if (objc != 1) {
-      Tcl_WrongNumArgs(interp, 1, objv, "");
-      return TCL_ERROR;
-   }
-
-   struct cindexTranslationUnitInfo *info
-      = (struct cindexTranslationUnitInfo *)clientData;
-
-   int status = clang_reparseTranslationUnit(info->translationUnit, 0, NULL, 0);
-   if (status != 0) {
-      Tcl_SetObjResult(interp,
-                       Tcl_ObjPrintf("translation unit \"%s\" is not valid",
-                                     Tcl_GetStringFromObj(info->name, NULL)));
-      return TCL_ERROR;
-   }
-
-   return TCL_OK;
-}
-
-//------------------------- cindex::<translationUnit instance> resourceUsage
-
-static int
-cindexTranslationUnitResourceUsageObjCmd(ClientData     clientData,
-                                         Tcl_Interp    *interp,
-                                         int            objc,
-                                         Tcl_Obj *const objv[])
-{
-   if (objc != 1) {
-      Tcl_WrongNumArgs(interp, 1, objv, "");
-      return TCL_ERROR;
-   }
-
-   struct cindexTranslationUnitInfo *info
-      = (struct cindexTranslationUnitInfo *)clientData;
-
-   CXTUResourceUsage usage = clang_getCXTUResourceUsage(info->translationUnit);
-
-   Tcl_Obj *result = Tcl_NewDictObj();
-   Tcl_SetObjResult(interp, result);
-
-   for (int i = 0; i < usage.numEntries; ++i) {
-      const char *name = clang_getTUResourceUsageName(usage.entries[i].kind);
-      Tcl_Obj *kind = Tcl_NewStringObj(name, -1);
-
-      mp_int value_hi;
-      mp_init_set_int(&value_hi, (usage.entries[i].amount >> 32) & 0xffffffff);
-      mp_lshd(&value_hi, 32);
-      mp_int value_lo;
-      mp_init_set_int(&value_lo, usage.entries[i].amount & 0xffffffff);
-      mp_or(&value_hi, &value_lo, &value_lo);
-      Tcl_Obj *value = Tcl_NewBignumObj(&value_lo);
-      mp_clear(&value_hi);
-      mp_clear(&value_lo);
-
-      Tcl_IncrRefCount(kind);
-      Tcl_IncrRefCount(value);
-      Tcl_DictObjPut(interp, result, kind, value);
-      Tcl_DecrRefCount(kind);
-      Tcl_DecrRefCount(value);
-   }
-
-   clang_disposeCXTUResourceUsage(usage);
-
-   return TCL_OK;
-}
-
-//-------------------------------- cindex::<translationUnit instance> cursor
-
-static int cindexTranslationUnitCursorObjCmd(ClientData     clientData,
-                                             Tcl_Interp    *interp,
-                                             int            objc,
-                                             Tcl_Obj *const objv[])
-{
-   // cursor
-   //	returns the cursor pointing the root AST node
-   //
-   // cursor -file file -line line -column column
-   //   returns the cursor at the specified file, line, and column
-   //
-   // cursor -file file -offset offset
-   //   returns the cursor at the specified file and offset
-
-   if (objc != 1) {
-      Tcl_WrongNumArgs(interp, 1, objv, "");
-      return TCL_ERROR;
-   }
-
-   struct cindexTranslationUnitInfo *info
-      = (struct cindexTranslationUnitInfo *)clientData;
-
-   struct cindexCursorInfo cursorInfo;
-   cursorInfo.cursor = clang_getTranslationUnitCursor(info->translationUnit);
-   cursorInfo.tuSequenceNumber = info->sequenceNumber;
-
-   Tcl_SetObjResult(interp, Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
-                                                sizeof cursorInfo));
-
-   return TCL_OK;
-}
-
-//--------------------------------------- cindex::<translationUnit instance>
-
-static int cindexTranslationUnitInstanceObjCmd(ClientData     clientData,
-                                               Tcl_Interp    *interp,
-                                               int            objc,
-                                               Tcl_Obj *const objv[])
-{
-   if (objc < 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "subcommand");
-      return TCL_ERROR;
-   }
-
-   static struct cindexSubcommand subcommands[] = {
-      { "save",		 cindexTranslationUnitSaveObjCmd },
-      { "reparse",	 cindexTranslationUnitReparseObjCmd },
-      { "resourceUsage", cindexTranslationUnitResourceUsageObjCmd },
-      { "cursor",	 cindexTranslationUnitCursorObjCmd },
-   };
-   int n = sizeof subcommands / sizeof subcommands[0];
-
-   return cindexDispatchSubcommand(clientData, interp, objc, objv,
-                                   n, subcommands);
-}
-
-//----------------------------------------- cindex::<index instance> options
-
-static int cindexIndexOptionsObjCmd(ClientData     clientData,
-                                    Tcl_Interp    *interp,
-                                    int            objc,
-                                    Tcl_Obj *const objv[])
-{
-   static struct cindexBitMask options[] = {
-      { "-threadBackgroundPriorityForIndexing" },
-      { "-threadBackgroundPriorityForEditing" },
-      { "-threadBackgroundPriorityForAll",
-        CXGlobalOpt_ThreadBackgroundPriorityForAll },
-      { NULL }
-   };
-
-   struct cindexIndexInfo *info = (struct cindexIndexInfo *)clientData;
-
-   if (objc == 1) {
-      unsigned value = clang_CXIndex_getGlobalOptions(info->index);
-      return cindexBitMaskToString(interp, options, cindexNone, value);
-   }
-
-   unsigned value = 0;
-   int status
-      = cindexParseBitMask(interp, options, cindexNone, objc, objv, &value);
-   if (status == TCL_OK) {
-      clang_CXIndex_setGlobalOptions(info->index, value);
-   }
-
-   return status;
-}
-
-//------------------------------------------------------ cindex::<index> parse
-
-static struct cindexBitMask cindexParseOptions[] = {
-   { "-detailPreprocessingRecord" },
-   { "-incomplete" },
-   { "-precompiledPreamble" },
-   { "-cacheCompletionResults" },
-   { "-forSerialization" },
-   { "-cxxChainedPCH" },
-   { "-skipFunctionBodies" },
-   { "-includeBriefCommentsInCodeCompletion" },
-   { NULL }
-};
-
-static int cindexIndexParseObjCmd(ClientData     clientData,
-                                  Tcl_Interp    *interp,
-                                  int            objc,
-                                  Tcl_Obj *const objv[])
-{
-   if (objc < 2) {
-      Tcl_WrongNumArgs(interp, 1, objv,
-                       "tuName ?-detailPreprocessingRecord? ... "
-                       "?--? commandline...");
-      return TCL_ERROR;
-   }
-
-   const char *commandName = Tcl_GetStringFromObj(objv[1], NULL);
-
-   int commandLineStart = objc;
-   int optionsEnd = 0;
-   for (int i = 2; i < objc; ++i, optionsEnd = i) {
-      const char *str = Tcl_GetStringFromObj(objv[i], NULL);
-      if (str[0] != '-') {
-         commandLineStart = i;
-         break;
-      }
-      if (strcmp(str, "--") == 0) {
-         commandLineStart = i + 1;
-         break;
-      }
-   }
-
-   unsigned flags = 0;
-   int status = cindexParseBitMask(interp, cindexParseOptions, cindexNone,
-                                   optionsEnd, objv, &flags);
-
-   int nargs = objc - commandLineStart;
-   char **args = (char **)Tcl_Alloc(nargs * sizeof *args);
-   for (int i = commandLineStart; i < objc; ++i) {
-      args[i - commandLineStart] = Tcl_GetStringFromObj(objv[i], NULL);
-   }
-
-   struct cindexIndexInfo *parent = (struct cindexIndexInfo *)clientData;
-   CXTranslationUnit tu
-      = clang_parseTranslationUnit(parent->index, NULL,
-                                   (const char *const *)args, nargs,
-                                   NULL, 0, flags);
-   if (tu == NULL) {
-      Tcl_SetObjResult(interp,
-                       Tcl_NewStringObj("failed to create translation unit.",
-                                        -1));
-      return TCL_ERROR;
-   }
-
-   struct cindexTranslationUnitInfo *info
-      = (struct cindexTranslationUnitInfo *)Tcl_Alloc(sizeof *info);
-   info->parent          = parent;
-   info->name            = objv[1];
-   info->translationUnit = tu;
-   info->sequenceNumber  = cindexTranslationUnitNextSequenceNumber++;
-
-   int hashTableSize =
-      sizeof translationUnitHashTable / sizeof translationUnitHashTable[0];
-   int hash = info->sequenceNumber % hashTableSize;
-   info->next = translationUnitHashTable[hash];
-   translationUnitHashTable[hash] = info;
-
-   Tcl_IncrRefCount(info->name);
-
-   Tcl_CreateObjCommand(interp, commandName,
-                        cindexTranslationUnitInstanceObjCmd,
-                        (ClientData)info, cindexTranslationUnitDeleteProc);
-
-   return TCL_OK;
-}
-
-//------------------------------------------------- cindex::<index instance>
-
-static int cindexIndexInstanceObjCmd(ClientData clientData,
-                                     Tcl_Interp *interp,
-                                     int objc,
-                                     Tcl_Obj *const objv[])
-{
-   if (objc < 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "subcommand");
-      return TCL_ERROR;
-   }
-
-   static struct cindexSubcommand subcommands[] = {
-      { "options",	cindexIndexOptionsObjCmd },
-      { "parse",	cindexIndexParseObjCmd }
-   };
-   int n = sizeof subcommands / sizeof subcommands[0];
-
-   return cindexDispatchSubcommand(clientData, interp, objc, objv,
-                                   n, subcommands);
-}
-
-//------------------------------------------------------------ cindex::index
-
-/*
- * cindex::index ?-excludeDeclFromPCH? ?-displayDiagnostics? index
- */
-
-static int cindexIndexObjCmd(ClientData     clientData,
-                             Tcl_Interp    *interp,
-                             int            objc,
-                             Tcl_Obj *const objv[])
-{
-   const char *commandName = NULL;
-
-   static struct {
-      const char *option;
-      int         flag;
-   } options[] = {
-      { "-excludeDeclFromPCH", 0 },
-      { "-displayDiagnostics", 0 }
-   };
-
-   for (int i = 1; i < objc; ++i) {
-      const char *obj = Tcl_GetStringFromObj(objv[i], NULL);
-
-      for (int j = 0; j < sizeof options / sizeof options[0]; ++j) {
-         if (strcmp(options[j].option, obj) == 0) {
-            options[j].flag = 1;
-            goto continue_i;
-         }
-      }
-
-      if (obj[0] == '-') {
-         Tcl_SetObjResult(interp,
-                          Tcl_ObjPrintf("unknown option: \"%s\"", obj));
-         return TCL_ERROR;
-      }
-
-      if (commandName != NULL) {
-         commandName = NULL;
-         break;
-      }
-
-      commandName = obj;
-
-   continue_i:
-      ;
-   }
-
-   if (commandName == NULL) {
-      Tcl_WrongNumArgs(interp, 1, objv,
-                       "?-excludeDeclFromPCH? ?-displayDiagnostics? index");
-      return TCL_ERROR;
-   }
-
-   CXIndex index = clang_createIndex(options[0].flag, options[1].flag);
-   if (index == NULL) {
-      Tcl_SetObjResult(interp, Tcl_NewStringObj("index creation failed", -1));
-      return TCL_ERROR;
-   }
-
-   struct cindexIndexInfo *info
-      = (struct cindexIndexInfo *)Tcl_Alloc(sizeof *info);
-   info->interp = interp;
-   info->index = index;
-   info->children = Tcl_NewObj();
-   Tcl_IncrRefCount(info->children);
-
-   Tcl_CreateObjCommand(interp, commandName, cindexIndexInstanceObjCmd,
-			(ClientData)info, cindexIndexDeleteProc);
-
-   return TCL_OK;
-}
-
-//----------------------------------------------------- cindex::foreachChild
-
-struct cindexForeachChildInfo
-{
-   Tcl_Interp *interp;
-   Tcl_Obj    *childName;
-   Tcl_Obj    *scriptObj;
-   int         returnCode;
-   int         tuSequenceNumber;
-};
-
-static enum CXChildVisitResult
-cindexForeachChildHelper(CXCursor     cursor,
-                         CXCursor     parent,
-                         CXClientData clientData)
-{
-   struct cindexForeachChildInfo *visitInfo
-      = (struct cindexForeachChildInfo *)clientData;
-
-   struct cindexCursorInfo cursorInfo;
-   cursorInfo.cursor           = cursor;
-   cursorInfo.tuSequenceNumber = visitInfo->tuSequenceNumber;
-
-   if (Tcl_ObjSetVar2(visitInfo->interp,
-                      visitInfo->childName,
-                      NULL,
-                      Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
-                                          sizeof cursorInfo),
-                      TCL_LEAVE_ERR_MSG) == NULL) {
-      return TCL_ERROR;
-   }
-
-   int status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
-   switch (status) {
-
-   case TCL_OK:
-   case TCL_CONTINUE:
-      return CXChildVisit_Continue;
-
-   case TCL_BREAK:
-      return CXChildVisit_Break;
-
-   case TCL_RECURSE:
-      return CXChildVisit_Recurse;
-
-   default:
-      visitInfo->returnCode = status;
-      return CXChildVisit_Break;
-   }
-}
-
-static int cindexForeachChildObjCmd(ClientData clientData,
-                                    Tcl_Interp *interp,
-                                    int objc,
-                                    Tcl_Obj *const objv[])
-{
-   if (objc != 4) {
-      Tcl_WrongNumArgs(interp, 1, objv, "childName cursor script");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[2], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   struct cindexForeachChildInfo visitInfo = {
-      .interp           = interp,
-      .childName        = objv[1],
-      .scriptObj        = objv[3],
-      .returnCode       = TCL_OK,
-      .tuSequenceNumber = cursorInfo.tuSequenceNumber,
-   };
-
-   if (clang_visitChildren(cursorInfo.cursor,
-                           cindexForeachChildHelper,
-                           (CXClientData)&visitInfo)) {
-      return visitInfo.returnCode;
-   }
-
-   return TCL_OK;
-}
-
-//---------------------------------------------------------- cindex::recurse
-
-static int cindexRecurseObjCmd(ClientData clientData,
-                               Tcl_Interp *interp,
-                               int objc,
-                               Tcl_Obj *const objv[])
-{
-   return TCL_RECURSE;
-}
-
-//--------------------------------------------------- cindex::cursor::equals
-
-static int cindexCursorEqualsObjCmd(ClientData clientData,
-                                    Tcl_Interp *interp,
-                                    int objc,
-                                    Tcl_Obj *const objv[])
-{
-   if (objc != 3) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor1 cursor2");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo[2];
-   for (int i = 1, cursor = 0; i < 3; ++i, ++cursor) {
-      int status = cindexValidateCursor(interp, objv[i], &cursorInfo[cursor]);
-      if (status != TCL_OK) {
-         return status;
-      }
-   }
-
-   unsigned eq
-      = clang_equalCursors(cursorInfo[0].cursor, cursorInfo[1].cursor);
-   Tcl_SetObjResult(interp, Tcl_NewIntObj(eq));
-
-   return TCL_OK;
-}
-
-//----------------------------------------------------- cindex::cursor::hash
-
-static int cindexCursorHashObjCmd(ClientData clientData,
-                                  Tcl_Interp *interp,
-                                  int objc,
-                                  Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   unsigned hash = clang_hashCursor(cursorInfo.cursor);
-   Tcl_SetObjResult(interp, Tcl_NewLongObj(hash));
-
-   return TCL_OK;
-}
-
-//----------------------------------------------------- cindex::cursor::kind
-
-static int cindexCursorKindObjCmd(ClientData clientData,
-                                  Tcl_Interp *interp,
-                                  int objc,
-                                  Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   static Tcl_Obj *name = NULL;
-   if (name == NULL) {
-      name = Tcl_NewStringObj("cindex::cursorKind", -1);
-      Tcl_IncrRefCount(name);
-   }
-
-   enum CXCursorKind kind = clang_getCursorKind(cursorInfo.cursor);
-   Tcl_SetObjResult(interp,
-                    Tcl_ObjGetVar2(interp, name, Tcl_NewIntObj(kind), 0));
-
-   return TCL_OK;
-}
-
-//------------------------------------------------- cindex::cursor::is::null
-
-static int cindexCursorIsNullObjCmd(ClientData clientData,
-                                    Tcl_Interp *interp,
-                                    int objc,
-                                    Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   int result = clang_Cursor_isNull(cursorInfo.cursor);
-   Tcl_SetObjResult(interp, Tcl_NewIntObj(result));
-
-   return TCL_OK;
-}
-
-//-------------------------------------------- cindex::cursor::is::<generic>
-
-static int cindexCursorIsGenericObjCmd(ClientData clientData,
-                                       Tcl_Interp *interp,
-                                       int objc,
-                                       Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   typedef unsigned (*ProcType)(enum CXCursorKind);
-
-   ProcType proc = (ProcType)clientData;
-
-   enum CXCursorKind kind = clang_getCursorKind(cursorInfo.cursor);
-   unsigned result = proc(kind);
-   Tcl_SetObjResult(interp, Tcl_NewLongObj(result));
-
-   return TCL_OK;
-}
-
-//------------------------------------------- cindex::cursor::<generic enum>
-
-typedef int (*cindexCursorGenericEnumProc)(CXCursor);
-
-struct cindexCursorGenericEnumInfo
-{
-   struct cindexEnumLabels     *labels;
-   cindexCursorGenericEnumProc  proc;
-};
-
-static int cindexCursorGenericEnumObjCmd(ClientData clientData,
-                                         Tcl_Interp *interp,
-                                         int objc,
-                                         Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   struct cindexCursorGenericEnumInfo *info
-      = (struct cindexCursorGenericEnumInfo *)clientData;
-
-   cindexCursorGenericEnumProc proc = info->proc;
-   int value = proc(cursorInfo.cursor);
-
-   return cindexGetEnumLabel(interp, info->labels, value);
-}
-
-//------------------------------------------ cindex::cursor::translationUnit
-
-static int cindexCursorTranslationUnitObjCmd(ClientData clientData,
-                                             Tcl_Interp *interp,
-                                             int objc,
-                                             Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   int infoSize = 0;
-   unsigned char *infoPtr = Tcl_GetByteArrayFromObj(objv[1], &infoSize);
-
-   struct cindexCursorInfo cursorInfo;
-
-   if (infoSize != sizeof cursorInfo) {
-      Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid cursor", -1));
-      return TCL_ERROR;
-   }
-
-   memcpy(&cursorInfo, infoPtr, sizeof cursorInfo);
-
-   struct cindexTranslationUnitInfo *tuInfo
-      = cindexLookupTranslationUnit(cursorInfo.tuSequenceNumber);
-
-   if (tuInfo == NULL) {
-      Tcl_SetObjResult(interp,
-                       Tcl_NewStringObj("translation unit of the cursor "
-                                        "has been deleted.", -1));
-      return TCL_ERROR;
-   }
-
-   Tcl_SetObjResult(interp, tuInfo->name);
-
-   return TCL_OK;
-}
-
-//------------------------------------------- cindex::cursor::semanticParent
-
-static int cindexCursorSemanticParentObjCmd(ClientData     clientData,
-                                            Tcl_Interp    *interp,
-                                            int            objc,
-                                            Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   cursorInfo.cursor = clang_getCursorSemanticParent(cursorInfo.cursor);
-
-   Tcl_SetObjResult(interp, Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
-                                                sizeof cursorInfo));
-
-   return TCL_OK;
-}
-
-//------------------------------------------- cindex::cursor::lexicalParent
-
-static int cindexCursorLexicalParentObjCmd(ClientData     clientData,
-                                           Tcl_Interp    *interp,
-                                           int            objc,
-                                           Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   cursorInfo.cursor = clang_getCursorLexicalParent(cursorInfo.cursor);
-
-   Tcl_SetObjResult(interp,
-                    Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
-                                        sizeof cursorInfo));
-
-   return TCL_OK;
-}
-
-//----------------------------------------- cindex::cursor::overridenCursors
-
-static int cindexCursorOverriddenCursorsObjCmd(ClientData     clientData,
-                                               Tcl_Interp    *interp,
-                                               int            objc,
-                                               Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   CXCursor *overridden = NULL;
-   unsigned numOverridden = 0;
-   clang_getOverriddenCursors(cursorInfo.cursor, &overridden, &numOverridden);
-
-   Tcl_Obj *result = Tcl_NewObj();
-   Tcl_SetObjResult(interp, result);
-
-   for (int i = 0; i < numOverridden && status == TCL_OK; ++i) {
-      struct cindexCursorInfo newCursorInfo;
-      newCursorInfo.cursor = overridden[i];
-      newCursorInfo.tuSequenceNumber = cursorInfo.tuSequenceNumber;
-
-      Tcl_Obj *cursorObj = Tcl_NewByteArrayObj((unsigned char *)&newCursorInfo,
-                                               sizeof newCursorInfo);
-      status = Tcl_ListObjAppendElement(interp, result, cursorObj);
-   }
-
-   clang_disposeOverriddenCursors(overridden);
-
-   return status;
-}
-
-//--------------------------------------------- cindex::cursor::includedFile
-
-static int cindexCursorIncludedFileObjCmd(ClientData     clientData,
-                                          Tcl_Interp    *interp,
-                                          int            objc,
-                                          Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   CXFile cxfile = clang_getIncludedFile(cursorInfo.cursor);
-   CXString filenameStr = clang_getFileName(cxfile);
-   const char *filenameCStr = clang_getCString(filenameStr);
-   Tcl_SetObjResult(interp, Tcl_NewStringObj(filenameCStr, -1));
-   clang_disposeString(filenameStr);
-
-   return TCL_OK;
-}
-
-//----------------------------------------- cindex::cursor::<location command>
-
-static int cindexCursorRangeObjCmd(ClientData     clientData,
-                                   Tcl_Interp    *interp,
-                                   int            objc,
-                                   Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   typedef void (*CursorProc)(CXSourceLocation,
-                              CXFile*, unsigned *, unsigned *, unsigned *);
-
-   CXSourceRange range = clang_getCursorExtent(cursorInfo.cursor);
-   CursorProc proc = (CursorProc)clientData;
-
-   CXSourceLocation locs[2];
-   locs[0] = clang_getRangeStart(range);
-   locs[1] = clang_getRangeEnd(range);
-
-   Tcl_Obj *result = Tcl_NewObj();
-   Tcl_SetObjResult(interp, result);
-
-   for (int i = 0; i < 2; ++i) {
-
-      CXFile   file;
-      unsigned line;
-      unsigned column;
-      unsigned offset;
-
-      proc(locs[i], &file, &line, &column, &offset);
-
-      Tcl_Obj *elm = Tcl_NewObj();
-      Tcl_ListObjAppendElement(NULL, elm, cindexFile);
-
-      CXString cxFileName = clang_getFileName(file);
-      const char *filename = clang_getCString(cxFileName);
-      Tcl_ListObjAppendElement(NULL, elm, cindexNewFileNameObj(filename));
-      clang_disposeString(cxFileName);
-
-      Tcl_ListObjAppendElement(NULL, elm, cindexLine);
-      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(line));
-
-      Tcl_ListObjAppendElement(NULL, elm, cindexColumn);
-      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(column));
-                      
-      Tcl_ListObjAppendElement(NULL, elm, cindexOffset);
-      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(offset));
-
-      Tcl_ListObjAppendElement(NULL, result, elm);
-   }
-
-   return status;
-}
-
-static int cindexCursorPresumedLocationObjCmd(ClientData     clientData,
-                                              Tcl_Interp    *interp,
-                                              int            objc,
-                                              Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   CXSourceRange range = clang_getCursorExtent(cursorInfo.cursor);
-
-   CXSourceLocation locs[2];
-   locs[0] = clang_getRangeStart(range);
-   locs[1] = clang_getRangeEnd(range);
-
-   Tcl_Obj *result = Tcl_NewObj();
-   Tcl_SetObjResult(interp, result);
-
-   for (int i = 0; i < 2; ++i) {
-      CXString cxFilename;
-      unsigned line;
-      unsigned column;
-      clang_getPresumedLocation(locs[i], &cxFilename, &line, &column);
-
-      Tcl_Obj *elm = Tcl_NewObj();
-      Tcl_ListObjAppendElement(NULL, elm, cindexFile);
-
-      const char *filename = clang_getCString(cxFilename);
-      Tcl_ListObjAppendElement(NULL, elm, cindexNewFileNameObj(filename));
-      clang_disposeString(cxFilename);
-
-      Tcl_ListObjAppendElement(NULL, elm, cindexLine);
-      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(line));
-
-      Tcl_ListObjAppendElement(NULL, elm, cindexColumn);
-      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(column));
-
-      Tcl_ListObjAppendElement(NULL, result, elm);
-   }
-                      
-   return TCL_OK;
-}
-
-//---------------------------------------- cindex::cursor::is:inSystemHeader
-
-static int cindexCursorIsInSystemHeaderObjCmd(ClientData     clientData,
-                                              Tcl_Interp    *interp,
-                                              int            objc,
-                                              Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   CXSourceLocation pos = clang_getCursorLocation(cursorInfo.cursor);
-   int value = clang_Location_isInSystemHeader(pos);
-
-   Tcl_SetObjResult(interp, Tcl_NewIntObj(value));
-
-   return TCL_OK;
-}
-
-//-------------------------------------------- cindex::cursor::is:inMainFile
-
-static int cindexCursorIsInMainFileObjCmd(ClientData     clientData,
-                                          Tcl_Interp    *interp,
-                                          int            objc,
-                                          Tcl_Obj *const objv[])
-{
-   if (objc != 2) {
-      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
-      return TCL_ERROR;
-   }
-
-   struct cindexCursorInfo cursorInfo;
-   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   CXSourceLocation pos = clang_getCursorLocation(cursorInfo.cursor);
-   int value = clang_Location_isFromMainFile(pos);
-
-   Tcl_SetObjResult(interp, Tcl_NewIntObj(value));
-
-   return TCL_OK;
-}
-
-//------------------------------------------------------------- initialization
-
-int cindex_createCursorKindTable(Tcl_Interp *interp)
+int cindexCreateCursorKindTable(Tcl_Interp *interp)
 {
    struct {
       const char *name;
@@ -1806,12 +950,85 @@ int cindex_createCursorKindTable(Tcl_Interp *interp)
    return TCL_OK;
 }
 
-int cindex_createCXTypeTable(Tcl_Interp *interp)
+struct cindexCursorInfo
 {
-   struct {
-      const char *name;
-      int         kind;
-   } table[] = {
+   CXCursor cursor;
+   int      tuSequenceNumber;
+};
+
+static int cindexValidateCursor(Tcl_Interp		*interp,
+                                Tcl_Obj                 *cursorObj,
+                                struct cindexCursorInfo *info)
+{
+   int            infoSize = 0;
+   unsigned char *infoPtr  = Tcl_GetByteArrayFromObj(cursorObj, &infoSize);
+
+   if (infoSize != sizeof *info) {
+      Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid cursor", -1));
+      return TCL_ERROR;
+   }
+
+   memcpy(info, infoPtr, sizeof *info);
+
+   if (! cindexIsValidTranslationUnit(info->tuSequenceNumber)) {
+      Tcl_SetObjResult(interp,
+                       Tcl_NewStringObj("translation unit of the cursor "
+                                        "has been deleted.", -1));
+      return TCL_ERROR;
+   }
+
+   return TCL_OK;
+}
+
+//---------------------------------------------------- source location mapping
+
+static Tcl_Obj *cindexFile;
+static Tcl_Obj *cindexLine;
+static Tcl_Obj *cindexColumn;
+static Tcl_Obj *cindexOffset;
+static Tcl_Obj *cindexFileNameCache[64];
+
+static unsigned long cindexFileNameHash(const char *str)
+{
+   unsigned long        hash = 0;
+   int                  c;
+   const unsigned char *cp = (const unsigned char *)str;
+
+   while ( (c = *cp++) ) {
+      hash = c + (hash << 6) + (hash << 16) - hash;
+   }
+
+   return hash;
+}
+
+static Tcl_Obj *cindexNewFileNameObj(const char *filenameCstr)
+{
+   int hash = cindexFileNameHash(filenameCstr)
+      % (sizeof cindexFileNameCache / sizeof cindexFileNameCache[0]);
+
+   Tcl_Obj *candidate = cindexFileNameCache[hash];
+   if (candidate != NULL) {
+      if (strcmp(Tcl_GetStringFromObj(candidate, NULL), filenameCstr) == 0) {
+         return candidate;
+      }
+      Tcl_DecrRefCount(candidate);
+   }
+
+   Tcl_Obj *result = Tcl_NewStringObj(filenameCstr, -1);
+   cindexFileNameCache[hash] = result;
+   Tcl_IncrRefCount(result);
+
+   return result;
+}
+
+//------------------------------------------------------------- type mapping
+
+static Tcl_Obj *cindexTypeKindValuesObj;
+static Tcl_Obj *cindexTypeKindNamesObj;
+
+int cindexCreateCXTypeTable(Tcl_Interp *interp)
+{
+   static struct cindexNameValuePair cxtypeKinds[] = {
       { "Invalid", CXType_Invalid },
       { "Unexposed", CXType_Unexposed },
       { "Void", CXType_Void },
@@ -1860,20 +1077,1154 @@ int cindex_createCXTypeTable(Tcl_Interp *interp)
       { "VariableArray", CXType_VariableArray },
       { "DependentSizedArray", CXType_DependentSizedArray },
       { "MemberPointer", CXType_MemberPointer },
+      { NULL }
    };
-   int numEntries = sizeof table / sizeof table[0];
 
-   Tcl_Obj *name = Tcl_NewStringObj("cindex::typeKind", -1);
-   for (int i = 0; i < numEntries; ++i) {
-      if (Tcl_ObjSetVar2(interp, name, Tcl_NewIntObj(table[i].kind),
-                         Tcl_NewStringObj(table[i].name, -1),
-                         TCL_LEAVE_ERR_MSG) == NULL) {
-         return TCL_ERROR;
+   return cindexCreateNameValueTable(interp,
+                                     "cindex::typeKind",
+                                     &cindexTypeKindNamesObj,
+                                     &cindexTypeKindValuesObj,
+                                     cxtypeKinds);
+}
+
+Tcl_Obj *cindexNewCXTypeObj(Tcl_Interp *interp, CXType type)
+{
+   Tcl_Obj *kindValue = Tcl_NewIntObj(type.kind);
+   Tcl_IncrRefCount(kindValue);
+   Tcl_Obj *kindName = Tcl_ObjGetVar2(interp, cindexTypeKindNamesObj, kindValue,
+                                      TCL_LEAVE_ERR_MSG);
+   Tcl_DecrRefCount(kindValue);
+   if (kindName == NULL) {
+      return NULL;
+   }
+
+   enum {
+      ndata = sizeof type.data / sizeof type.data[0]
+   };
+
+   Tcl_Obj* elements[1 + ndata];
+   elements[0] = kindName;
+   for (int i = 0; i < ndata; ++i) {
+      elements[i + 1] = cindexNewPointerObj(type.data[i]);
+   }
+
+   return Tcl_NewListObj(sizeof elements / sizeof elements[0], elements);
+}
+
+int cindexGetCXTypeObj(Tcl_Interp *interp, Tcl_Obj *obj, CXType *output)
+{
+   CXType result;
+   memset(&result, 0, sizeof result);
+
+   enum {
+      n = 1 + sizeof result.data / sizeof result.data[0]
+   };
+
+   Tcl_Obj *objs[n];
+   for (int i = 0; i < n; ++i) {
+      int status = Tcl_ListObjIndex(interp, obj, i, objs + i);
+      if (status != TCL_OK) {
+         return status;
       }
+   }
+
+   Tcl_Obj *kind = Tcl_ObjGetVar2(interp, cindexTypeKindValuesObj, objs[0],
+                                  TCL_LEAVE_ERR_MSG);
+   if (kind == NULL) {
+      return TCL_ERROR;
+   }
+
+   int kindValue;
+   int status = Tcl_GetIntFromObj(interp, kind, &kindValue);
+   if (status == TCL_OK) {
+      output->kind = kindValue;
+      for (int i = 1; i < n; ++i) {
+         status = cindexGetPointerFromObj(interp, objs[i],
+                                          &output->data[i - 1]);
+         if (status != TCL_ERROR) {
+            break;
+         }
+      }
+   }
+
+   return status;
+}
+
+//----------------------------------------------------------------------------
+
+static struct cindexEnumLabels cindexLinkageLables = {
+   .names = {
+      "Invalid",
+      "NoLinkage",
+      "Internal",
+      "UniqueExternal",
+      "External",
+      NULL
+   }
+};
+
+static struct cindexEnumLabels cindexLanguageLables = {
+   .names = {
+      "Invalid",
+      "C",
+      "ObjC",
+      "CPlusPlus",
+      NULL
+   }
+};
+
+//---------------------------------- cindex::<translationUnit instance> save
+
+static int cindexTranslationUnitSaveObjCmd(ClientData     clientData,
+                                           Tcl_Interp    *interp,
+                                           int            objc,
+                                           Tcl_Obj *const objv[])
+{
+   if (objc < 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "filename");
+      return TCL_ERROR;
+   }
+
+   const char *filename = Tcl_GetStringFromObj(objv[1], NULL);
+
+   struct cindexTUInfo *info
+      = (struct cindexTUInfo *)clientData;
+
+   int status = clang_saveTranslationUnit(info->translationUnit, filename, 0);
+   switch (status) {
+
+   case CXSaveError_None:
+      break;
+
+   case CXSaveError_Unknown:
+      Tcl_SetObjResult(interp,
+                       Tcl_ObjPrintf("an unknown error occurred "
+                                     "while attempting to save to \"%s\"",
+                                     filename));
+      return TCL_ERROR;
+
+   case CXSaveError_TranslationErrors:
+      Tcl_SetObjResult(interp,
+                       Tcl_ObjPrintf("errors during translation prevented "
+                                     "the attempt to save \"%s\"",
+                                     Tcl_GetStringFromObj(info->name, NULL)));
+      return TCL_ERROR;
+
+   case CXSaveError_InvalidTU:
+      Tcl_SetObjResult(interp,
+                       Tcl_ObjPrintf("invalid translation unit \"%s\"",
+                                     Tcl_GetStringFromObj(info->name, NULL)));
+      return TCL_ERROR;
+
+   default:
+      Tcl_SetObjResult(interp,
+                       Tcl_ObjPrintf("unknown error code is returned by "
+                                     "clang_saveTranslationUnit()"));
+      return TCL_ERROR;
    }
 
    return TCL_OK;
 }
+
+//------------------------------- cindex::<translationUnit instance> reparse
+
+static int cindexTranslationUnitReparseObjCmd(ClientData     clientData,
+                                              Tcl_Interp    *interp,
+                                              int            objc,
+                                              Tcl_Obj *const objv[])
+{
+   if (objc != 1) {
+      Tcl_WrongNumArgs(interp, 1, objv, "");
+      return TCL_ERROR;
+   }
+
+   struct cindexTUInfo *info
+      = (struct cindexTUInfo *)clientData;
+
+   int status = clang_reparseTranslationUnit(info->translationUnit, 0, NULL, 0);
+   if (status != 0) {
+      Tcl_SetObjResult(interp,
+                       Tcl_ObjPrintf("translation unit \"%s\" is not valid",
+                                     Tcl_GetStringFromObj(info->name, NULL)));
+      return TCL_ERROR;
+   }
+
+   return TCL_OK;
+}
+
+//------------------------- cindex::<translationUnit instance> resourceUsage
+
+static int
+cindexTranslationUnitResourceUsageObjCmd(ClientData     clientData,
+                                         Tcl_Interp    *interp,
+                                         int            objc,
+                                         Tcl_Obj *const objv[])
+{
+   if (objc != 1) {
+      Tcl_WrongNumArgs(interp, 1, objv, "");
+      return TCL_ERROR;
+   }
+
+   struct cindexTUInfo *info
+      = (struct cindexTUInfo *)clientData;
+
+   CXTUResourceUsage usage = clang_getCXTUResourceUsage(info->translationUnit);
+
+   Tcl_Obj *result = Tcl_NewDictObj();
+   Tcl_SetObjResult(interp, result);
+
+   for (int i = 0; i < usage.numEntries; ++i) {
+      const char *name = clang_getTUResourceUsageName(usage.entries[i].kind);
+      Tcl_Obj *kind = Tcl_NewStringObj(name, -1);
+
+      mp_int value_hi;
+      mp_init_set_int(&value_hi, (usage.entries[i].amount >> 32) & 0xffffffff);
+      mp_lshd(&value_hi, 32);
+      mp_int value_lo;
+      mp_init_set_int(&value_lo, usage.entries[i].amount & 0xffffffff);
+      mp_or(&value_hi, &value_lo, &value_lo);
+      Tcl_Obj *value = Tcl_NewBignumObj(&value_lo);
+      mp_clear(&value_hi);
+      mp_clear(&value_lo);
+
+      Tcl_IncrRefCount(kind);
+      Tcl_IncrRefCount(value);
+      Tcl_DictObjPut(interp, result, kind, value);
+      Tcl_DecrRefCount(kind);
+      Tcl_DecrRefCount(value);
+   }
+
+   clang_disposeCXTUResourceUsage(usage);
+
+   return TCL_OK;
+}
+
+//-------------------------------- cindex::<translationUnit instance> cursor
+
+static int cindexTranslationUnitCursorObjCmd(ClientData     clientData,
+                                             Tcl_Interp    *interp,
+                                             int            objc,
+                                             Tcl_Obj *const objv[])
+{
+   // cursor
+   //	returns the cursor pointing the root AST node
+   //
+   // cursor -file file -line line -column column
+   //   returns the cursor at the specified file, line, and column
+   //
+   // cursor -file file -offset offset
+   //   returns the cursor at the specified file and offset
+
+   if (objc != 1) {
+      Tcl_WrongNumArgs(interp, 1, objv, "");
+      return TCL_ERROR;
+   }
+
+   struct cindexTUInfo *info
+      = (struct cindexTUInfo *)clientData;
+
+   struct cindexCursorInfo cursorInfo;
+   cursorInfo.cursor = clang_getTranslationUnitCursor(info->translationUnit);
+   cursorInfo.tuSequenceNumber = info->sequenceNumber;
+
+   Tcl_SetObjResult(interp, Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
+                                                sizeof cursorInfo));
+
+   return TCL_OK;
+}
+
+//--------------------------------------- cindex::<translationUnit instance>
+
+static int cindexTUInstanceObjCmd(ClientData     clientData,
+                                               Tcl_Interp    *interp,
+                                               int            objc,
+                                               Tcl_Obj *const objv[])
+{
+   if (objc < 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "subcommand");
+      return TCL_ERROR;
+   }
+
+   static struct cindexCommand subcommands[] = {
+      { "save",		 cindexTranslationUnitSaveObjCmd },
+      { "reparse",	 cindexTranslationUnitReparseObjCmd },
+      { "resourceUsage", cindexTranslationUnitResourceUsageObjCmd },
+      { "cursor",	 cindexTranslationUnitCursorObjCmd },
+      { NULL },
+   };
+
+   return cindexDispatchSubcommand(clientData, interp, objc, objv, subcommands);
+}
+
+//----------------------------------------- cindex::<index instance> options
+
+static int cindexIndexOptionsObjCmd(ClientData     clientData,
+                                    Tcl_Interp    *interp,
+                                    int            objc,
+                                    Tcl_Obj *const objv[])
+{
+   static struct cindexBitMask options[] = {
+      { "-threadBackgroundPriorityForIndexing" },
+      { "-threadBackgroundPriorityForEditing" },
+      { "-threadBackgroundPriorityForAll",
+        CXGlobalOpt_ThreadBackgroundPriorityForAll },
+      { NULL }
+   };
+
+   struct cindexIndexInfo *info = (struct cindexIndexInfo *)clientData;
+
+   if (objc == 1) {
+      unsigned value = clang_CXIndex_getGlobalOptions(info->index);
+      return cindexBitMaskToString(interp, options, cindexNone, value);
+   }
+
+   unsigned value = 0;
+   int status
+      = cindexParseBitMask(interp, options, cindexNone, objc, objv, &value);
+   if (status == TCL_OK) {
+      clang_CXIndex_setGlobalOptions(info->index, value);
+   }
+
+   return status;
+}
+
+//------------------------------------------------------ cindex::<index> parse
+
+static struct cindexBitMask cindexParseOptions[] = {
+   { "-detailPreprocessingRecord" },
+   { "-incomplete" },
+   { "-precompiledPreamble" },
+   { "-cacheCompletionResults" },
+   { "-forSerialization" },
+   { "-cxxChainedPCH" },
+   { "-skipFunctionBodies" },
+   { "-includeBriefCommentsInCodeCompletion" },
+   { NULL }
+};
+
+static int cindexIndexParseObjCmd(ClientData     clientData,
+                                  Tcl_Interp    *interp,
+                                  int            objc,
+                                  Tcl_Obj *const objv[])
+{
+   if (objc < 2) {
+      Tcl_WrongNumArgs(interp, 1, objv,
+                       "tuName ?-detailPreprocessingRecord? ... "
+                       "?--? commandline...");
+      return TCL_ERROR;
+   }
+
+   const char *commandName = Tcl_GetStringFromObj(objv[1], NULL);
+
+   int commandLineStart = objc;
+   int optionsEnd = 0;
+   for (int i = 2; i < objc; ++i, optionsEnd = i) {
+      const char *str = Tcl_GetStringFromObj(objv[i], NULL);
+      if (str[0] != '-') {
+         commandLineStart = i;
+         break;
+      }
+      if (strcmp(str, "--") == 0) {
+         commandLineStart = i + 1;
+         break;
+      }
+   }
+
+   unsigned flags = 0;
+   int status = cindexParseBitMask(interp, cindexParseOptions, cindexNone,
+                                   optionsEnd, objv, &flags);
+
+   int nargs = objc - commandLineStart;
+   char **args = (char **)Tcl_Alloc(nargs * sizeof *args);
+   for (int i = commandLineStart; i < objc; ++i) {
+      args[i - commandLineStart] = Tcl_GetStringFromObj(objv[i], NULL);
+   }
+
+   struct cindexIndexInfo *parent = (struct cindexIndexInfo *)clientData;
+   CXTranslationUnit tu
+      = clang_parseTranslationUnit(parent->index, NULL,
+                                   (const char *const *)args, nargs,
+                                   NULL, 0, flags);
+   if (tu == NULL) {
+      Tcl_SetObjResult(interp,
+                       Tcl_NewStringObj("failed to create translation unit.",
+                                        -1));
+      return TCL_ERROR;
+   }
+
+   struct cindexTUInfo *info = cindexCreateTUInfo(parent, objv[1], tu);
+
+   Tcl_CreateObjCommand(interp, commandName,
+                        cindexTUInstanceObjCmd, info, cindexTUDeleteProc);
+
+   return TCL_OK;
+}
+
+//------------------------------------------------- cindex::<index instance>
+
+static int cindexIndexInstanceObjCmd(ClientData clientData,
+                                     Tcl_Interp *interp,
+                                     int objc,
+                                     Tcl_Obj *const objv[])
+{
+   if (objc < 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "subcommand");
+      return TCL_ERROR;
+   }
+
+   static struct cindexCommand subcommands[] = {
+      { "options", cindexIndexOptionsObjCmd },
+      { "parse",   cindexIndexParseObjCmd },
+      { NULL }
+   };
+
+   return cindexDispatchSubcommand(clientData, interp, objc, objv, subcommands);
+}
+
+//------------------------------------------------------------ cindex::index
+
+/*
+ * cindex::index ?-excludeDeclFromPCH? ?-displayDiagnostics? index
+ */
+
+static int cindexIndexObjCmd(ClientData     clientData,
+                             Tcl_Interp    *interp,
+                             int            objc,
+                             Tcl_Obj *const objv[])
+{
+   const char *commandName = NULL;
+
+   static struct {
+      const char *option;
+      int         flag;
+   } options[] = {
+      { "-excludeDeclFromPCH", 0 },
+      { "-displayDiagnostics", 0 }
+   };
+
+   for (int i = 1; i < objc; ++i) {
+      const char *obj = Tcl_GetStringFromObj(objv[i], NULL);
+
+      for (int j = 0; j < sizeof options / sizeof options[0]; ++j) {
+         if (strcmp(options[j].option, obj) == 0) {
+            options[j].flag = 1;
+            goto continue_i;
+         }
+      }
+
+      if (obj[0] == '-') {
+         Tcl_SetObjResult(interp,
+                          Tcl_ObjPrintf("unknown option: \"%s\"", obj));
+         return TCL_ERROR;
+      }
+
+      if (commandName != NULL) {
+         commandName = NULL;
+         break;
+      }
+
+      commandName = obj;
+
+   continue_i:
+      ;
+   }
+
+   if (commandName == NULL) {
+      Tcl_WrongNumArgs(interp, 1, objv,
+                       "?-excludeDeclFromPCH? ?-displayDiagnostics? index");
+      return TCL_ERROR;
+   }
+
+   CXIndex index = clang_createIndex(options[0].flag, options[1].flag);
+   if (index == NULL) {
+      Tcl_SetObjResult(interp, Tcl_NewStringObj("index creation failed", -1));
+      return TCL_ERROR;
+   }
+
+   struct cindexIndexInfo *info = cindexCreateIndexInfo(interp, index);
+
+   Tcl_CreateObjCommand(interp, commandName, cindexIndexInstanceObjCmd,
+			info, cindexIndexDeleteProc);
+
+   return TCL_OK;
+}
+
+//----------------------------------------------------- cindex::foreachChild
+
+struct cindexForeachChildInfo
+{
+   Tcl_Interp *interp;
+   Tcl_Obj    *childName;
+   Tcl_Obj    *scriptObj;
+   int         returnCode;
+   int         tuSequenceNumber;
+};
+
+static enum CXChildVisitResult
+cindexForeachChildHelper(CXCursor     cursor,
+                         CXCursor     parent,
+                         CXClientData clientData)
+{
+   struct cindexForeachChildInfo *visitInfo
+      = (struct cindexForeachChildInfo *)clientData;
+
+   struct cindexCursorInfo cursorInfo;
+   cursorInfo.cursor           = cursor;
+   cursorInfo.tuSequenceNumber = visitInfo->tuSequenceNumber;
+
+   if (Tcl_ObjSetVar2(visitInfo->interp,
+                      visitInfo->childName,
+                      NULL,
+                      Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
+                                          sizeof cursorInfo),
+                      TCL_LEAVE_ERR_MSG) == NULL) {
+      return TCL_ERROR;
+   }
+
+   int status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
+   switch (status) {
+
+   case TCL_OK:
+   case TCL_CONTINUE:
+      return CXChildVisit_Continue;
+
+   case TCL_BREAK:
+      return CXChildVisit_Break;
+
+   case TCL_RECURSE:
+      return CXChildVisit_Recurse;
+
+   default:
+      visitInfo->returnCode = status;
+      return CXChildVisit_Break;
+   }
+}
+
+static int cindexForeachChildObjCmd(ClientData clientData,
+                                    Tcl_Interp *interp,
+                                    int objc,
+                                    Tcl_Obj *const objv[])
+{
+   if (objc != 4) {
+      Tcl_WrongNumArgs(interp, 1, objv, "childName cursor script");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[2], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   struct cindexForeachChildInfo visitInfo = {
+      .interp           = interp,
+      .childName        = objv[1],
+      .scriptObj        = objv[3],
+      .returnCode       = TCL_OK,
+      .tuSequenceNumber = cursorInfo.tuSequenceNumber,
+   };
+
+   if (clang_visitChildren(cursorInfo.cursor,
+                           cindexForeachChildHelper,
+                           (CXClientData)&visitInfo)) {
+      return visitInfo.returnCode;
+   }
+
+   return TCL_OK;
+}
+
+//---------------------------------------------------------- cindex::recurse
+
+static int cindexRecurseObjCmd(ClientData clientData,
+                               Tcl_Interp *interp,
+                               int objc,
+                               Tcl_Obj *const objv[])
+{
+   return TCL_RECURSE;
+}
+
+//--------------------------------------------------- cindex::cursor::equals
+
+static int cindexCursorEqualsObjCmd(ClientData clientData,
+                                    Tcl_Interp *interp,
+                                    int objc,
+                                    Tcl_Obj *const objv[])
+{
+   if (objc != 3) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor1 cursor2");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo[2];
+   for (int i = 1, cursor = 0; i < 3; ++i, ++cursor) {
+      int status = cindexValidateCursor(interp, objv[i], &cursorInfo[cursor]);
+      if (status != TCL_OK) {
+         return status;
+      }
+   }
+
+   unsigned eq
+      = clang_equalCursors(cursorInfo[0].cursor, cursorInfo[1].cursor);
+   Tcl_SetObjResult(interp, Tcl_NewIntObj(eq));
+
+   return TCL_OK;
+}
+
+//----------------------------------------------------- cindex::cursor::hash
+
+static int cindexCursorHashObjCmd(ClientData clientData,
+                                  Tcl_Interp *interp,
+                                  int objc,
+                                  Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   unsigned hash = clang_hashCursor(cursorInfo.cursor);
+   Tcl_SetObjResult(interp, Tcl_NewLongObj(hash));
+
+   return TCL_OK;
+}
+
+//----------------------------------------------------- cindex::cursor::kind
+
+static int cindexCursorKindObjCmd(ClientData clientData,
+                                  Tcl_Interp *interp,
+                                  int objc,
+                                  Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   static Tcl_Obj *name = NULL;
+   if (name == NULL) {
+      name = Tcl_NewStringObj("cindex::cursorKind", -1);
+      Tcl_IncrRefCount(name);
+   }
+
+   enum CXCursorKind kind = clang_getCursorKind(cursorInfo.cursor);
+   Tcl_SetObjResult(interp,
+                    Tcl_ObjGetVar2(interp, name, Tcl_NewIntObj(kind), 0));
+
+   return TCL_OK;
+}
+
+//------------------------------------------------- cindex::cursor::is::null
+
+static int cindexCursorIsNullObjCmd(ClientData clientData,
+                                    Tcl_Interp *interp,
+                                    int objc,
+                                    Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   int result = clang_Cursor_isNull(cursorInfo.cursor);
+   Tcl_SetObjResult(interp, Tcl_NewIntObj(result));
+
+   return TCL_OK;
+}
+
+//-------------------------------------------- cindex::cursor::is::<generic>
+
+static int cindexCursorIsGenericObjCmd(ClientData clientData,
+                                       Tcl_Interp *interp,
+                                       int objc,
+                                       Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   typedef unsigned (*ProcType)(enum CXCursorKind);
+
+   ProcType proc = (ProcType)clientData;
+
+   enum CXCursorKind kind = clang_getCursorKind(cursorInfo.cursor);
+   unsigned result = proc(kind);
+   Tcl_SetObjResult(interp, Tcl_NewLongObj(result));
+
+   return TCL_OK;
+}
+
+//------------------------------------------- cindex::cursor::<generic enum>
+
+typedef int (*cindexCursorGenericEnumProc)(CXCursor);
+
+struct cindexCursorGenericEnumInfo
+{
+   struct cindexEnumLabels     *labels;
+   cindexCursorGenericEnumProc  proc;
+};
+
+static int cindexCursorGenericEnumObjCmd(ClientData clientData,
+                                         Tcl_Interp *interp,
+                                         int objc,
+                                         Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   struct cindexCursorGenericEnumInfo *info
+      = (struct cindexCursorGenericEnumInfo *)clientData;
+
+   cindexCursorGenericEnumProc proc = info->proc;
+   int value = proc(cursorInfo.cursor);
+
+   return cindexGetEnumLabel(interp, info->labels, value);
+}
+
+//------------------------------------------ cindex::cursor::translationUnit
+
+static int cindexCursorTranslationUnitObjCmd(ClientData clientData,
+                                             Tcl_Interp *interp,
+                                             int objc,
+                                             Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   int infoSize = 0;
+   unsigned char *infoPtr = Tcl_GetByteArrayFromObj(objv[1], &infoSize);
+
+   struct cindexCursorInfo cursorInfo;
+
+   if (infoSize != sizeof cursorInfo) {
+      Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid cursor", -1));
+      return TCL_ERROR;
+   }
+
+   memcpy(&cursorInfo, infoPtr, sizeof cursorInfo);
+
+   struct cindexTUInfo *tuInfo
+      = cindexLookupTranslationUnit(cursorInfo.tuSequenceNumber);
+
+   if (tuInfo == NULL) {
+      Tcl_SetObjResult(interp,
+                       Tcl_NewStringObj("translation unit of the cursor "
+                                        "has been deleted.", -1));
+      return TCL_ERROR;
+   }
+
+   Tcl_SetObjResult(interp, tuInfo->name);
+
+   return TCL_OK;
+}
+
+//------------------------------------------- cindex::cursor::semanticParent
+
+static int cindexCursorSemanticParentObjCmd(ClientData     clientData,
+                                            Tcl_Interp    *interp,
+                                            int            objc,
+                                            Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   cursorInfo.cursor = clang_getCursorSemanticParent(cursorInfo.cursor);
+
+   Tcl_SetObjResult(interp, Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
+                                                sizeof cursorInfo));
+
+   return TCL_OK;
+}
+
+//------------------------------------------- cindex::cursor::lexicalParent
+
+static int cindexCursorLexicalParentObjCmd(ClientData     clientData,
+                                           Tcl_Interp    *interp,
+                                           int            objc,
+                                           Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   cursorInfo.cursor = clang_getCursorLexicalParent(cursorInfo.cursor);
+
+   Tcl_SetObjResult(interp,
+                    Tcl_NewByteArrayObj((unsigned char *)&cursorInfo,
+                                        sizeof cursorInfo));
+
+   return TCL_OK;
+}
+
+//----------------------------------------- cindex::cursor::overridenCursors
+
+static int cindexCursorOverriddenCursorsObjCmd(ClientData     clientData,
+                                               Tcl_Interp    *interp,
+                                               int            objc,
+                                               Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXCursor *overridden = NULL;
+   unsigned numOverridden = 0;
+   clang_getOverriddenCursors(cursorInfo.cursor, &overridden, &numOverridden);
+
+   Tcl_Obj *result = Tcl_NewObj();
+   Tcl_SetObjResult(interp, result);
+
+   for (int i = 0; i < numOverridden && status == TCL_OK; ++i) {
+      struct cindexCursorInfo newCursorInfo;
+      newCursorInfo.cursor = overridden[i];
+      newCursorInfo.tuSequenceNumber = cursorInfo.tuSequenceNumber;
+
+      Tcl_Obj *cursorObj = Tcl_NewByteArrayObj((unsigned char *)&newCursorInfo,
+                                               sizeof newCursorInfo);
+      status = Tcl_ListObjAppendElement(interp, result, cursorObj);
+   }
+
+   clang_disposeOverriddenCursors(overridden);
+
+   return status;
+}
+
+//--------------------------------------------- cindex::cursor::includedFile
+
+static int cindexCursorIncludedFileObjCmd(ClientData     clientData,
+                                          Tcl_Interp    *interp,
+                                          int            objc,
+                                          Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXFile cxfile = clang_getIncludedFile(cursorInfo.cursor);
+   CXString filenameStr = clang_getFileName(cxfile);
+   const char *filenameCStr = clang_getCString(filenameStr);
+   Tcl_SetObjResult(interp, Tcl_NewStringObj(filenameCStr, -1));
+   clang_disposeString(filenameStr);
+
+   return TCL_OK;
+}
+
+//----------------------------------------- cindex::cursor::<location command>
+
+static int cindexCursorRangeObjCmd(ClientData     clientData,
+                                   Tcl_Interp    *interp,
+                                   int            objc,
+                                   Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   typedef void (*CursorProc)(CXSourceLocation,
+                              CXFile*, unsigned *, unsigned *, unsigned *);
+
+   CXSourceRange range = clang_getCursorExtent(cursorInfo.cursor);
+   CursorProc proc = (CursorProc)clientData;
+
+   CXSourceLocation locs[2];
+   locs[0] = clang_getRangeStart(range);
+   locs[1] = clang_getRangeEnd(range);
+
+   Tcl_Obj *result = Tcl_NewObj();
+   Tcl_SetObjResult(interp, result);
+
+   for (int i = 0; i < 2; ++i) {
+
+      CXFile   file;
+      unsigned line;
+      unsigned column;
+      unsigned offset;
+
+      proc(locs[i], &file, &line, &column, &offset);
+
+      Tcl_Obj *elm = Tcl_NewObj();
+      Tcl_ListObjAppendElement(NULL, elm, cindexFile);
+
+      CXString cxFileName = clang_getFileName(file);
+      const char *filename = clang_getCString(cxFileName);
+      Tcl_ListObjAppendElement(NULL, elm, cindexNewFileNameObj(filename));
+      clang_disposeString(cxFileName);
+
+      Tcl_ListObjAppendElement(NULL, elm, cindexLine);
+      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(line));
+
+      Tcl_ListObjAppendElement(NULL, elm, cindexColumn);
+      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(column));
+                      
+      Tcl_ListObjAppendElement(NULL, elm, cindexOffset);
+      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(offset));
+
+      Tcl_ListObjAppendElement(NULL, result, elm);
+   }
+
+   return status;
+}
+
+static int cindexCursorPresumedLocationObjCmd(ClientData     clientData,
+                                              Tcl_Interp    *interp,
+                                              int            objc,
+                                              Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXSourceRange range = clang_getCursorExtent(cursorInfo.cursor);
+
+   CXSourceLocation locs[2];
+   locs[0] = clang_getRangeStart(range);
+   locs[1] = clang_getRangeEnd(range);
+
+   Tcl_Obj *result = Tcl_NewObj();
+   Tcl_SetObjResult(interp, result);
+
+   for (int i = 0; i < 2; ++i) {
+      CXString cxFilename;
+      unsigned line;
+      unsigned column;
+      clang_getPresumedLocation(locs[i], &cxFilename, &line, &column);
+
+      Tcl_Obj *elm = Tcl_NewObj();
+      Tcl_ListObjAppendElement(NULL, elm, cindexFile);
+
+      const char *filename = clang_getCString(cxFilename);
+      Tcl_ListObjAppendElement(NULL, elm, cindexNewFileNameObj(filename));
+      clang_disposeString(cxFilename);
+
+      Tcl_ListObjAppendElement(NULL, elm, cindexLine);
+      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(line));
+
+      Tcl_ListObjAppendElement(NULL, elm, cindexColumn);
+      Tcl_ListObjAppendElement(NULL, elm, Tcl_NewLongObj(column));
+
+      Tcl_ListObjAppendElement(NULL, result, elm);
+   }
+                      
+   return TCL_OK;
+}
+
+//---------------------------------------- cindex::cursor::is:inSystemHeader
+
+static int cindexCursorIsInSystemHeaderObjCmd(ClientData     clientData,
+                                              Tcl_Interp    *interp,
+                                              int            objc,
+                                              Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXSourceLocation pos = clang_getCursorLocation(cursorInfo.cursor);
+   int value = clang_Location_isInSystemHeader(pos);
+
+   Tcl_SetObjResult(interp, Tcl_NewIntObj(value));
+
+   return TCL_OK;
+}
+
+//-------------------------------------------- cindex::cursor::is:inMainFile
+
+static int cindexCursorIsInMainFileObjCmd(ClientData     clientData,
+                                          Tcl_Interp    *interp,
+                                          int            objc,
+                                          Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXSourceLocation pos = clang_getCursorLocation(cursorInfo.cursor);
+   int value = clang_Location_isFromMainFile(pos);
+
+   Tcl_SetObjResult(interp, Tcl_NewIntObj(value));
+
+   return TCL_OK;
+}
+
+//----------------------------------------------------------------------------
+
+static int cindexCursorTypeObjCmd(ClientData     clientData,
+                                  Tcl_Interp    *interp,
+                                  int            objc,
+                                  Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXType cxtype = clang_getCursorType(cursorInfo.cursor);
+
+   Tcl_Obj *result = cindexNewCXTypeObj(interp, cxtype);
+   if (result == NULL) {
+      return TCL_ERROR;
+   }
+
+   Tcl_SetObjResult(interp, result);
+
+   return TCL_OK;
+}
+
+//---------------------------------- cindex::cursor::typedefDeclUnderlyingType
+
+static int cindexCursorTypedefDeclUnderlyingTypeObjCmd(ClientData     clientData,
+                                                       Tcl_Interp    *interp,
+                                                       int            objc,
+                                                       Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   struct cindexCursorInfo cursorInfo;
+   int status = cindexValidateCursor(interp, objv[1], &cursorInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXType cxtype = clang_getTypedefDeclUnderlyingType(cursorInfo.cursor);
+
+   Tcl_Obj *result = cindexNewCXTypeObj(interp, cxtype);
+   if (result == NULL) {
+      return TCL_ERROR;
+   }
+
+   Tcl_SetObjResult(interp, result);
+
+   return TCL_OK;
+}
+
+//----------------------------------------------------- cindex::type::spelling
+
+static int cindexTypeSpellingObjCmd(ClientData     clientData,
+                                    Tcl_Interp    *interp,
+                                    int            objc,
+                                    Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "type");
+      return TCL_ERROR;
+   }
+
+   CXType cxtype;
+   int status = cindexGetCXTypeObj(interp, objv[1], &cxtype);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXString spelling = clang_getTypeSpelling(cxtype);
+   const char *spellingCstr = clang_getCString(spelling);
+   Tcl_Obj *result = Tcl_NewStringObj(spellingCstr, -1);
+   Tcl_SetObjResult(interp, result);
+   clang_disposeString(spelling);
+
+   return TCL_OK;
+}
+
+//------------------------------------------------------------- initialization
 
 int cindex_createCallingConvTable(Tcl_Interp *interp)
 {
@@ -1912,6 +2263,8 @@ int cindex_createCallingConvTable(Tcl_Interp *interp)
 
 int Cindex_Init(Tcl_Interp *interp)
 {
+   int status = TCL_OK;
+
    if (Tcl_InitStubs(interp, "8.6", 0) == NULL) {
       return TCL_ERROR;
    }
@@ -1934,42 +2287,36 @@ int Cindex_Init(Tcl_Interp *interp)
    Tcl_Namespace *cindexNs
       = Tcl_CreateNamespace(interp, "cindex", NULL, NULL);
 
-   int status = cindex_createCursorKindTable(interp);
+   status = cindexCreateCursorKindTable(interp);
    if (status != TCL_OK) {
       return status;
    }
 
-   Tcl_CreateObjCommand(interp, "cindex::index",
-			cindexIndexObjCmd, (ClientData)NULL, NULL);
-   Tcl_Export(interp, cindexNs, "index", 0);
-   Tcl_CreateObjCommand(interp, "cindex::foreachChild",
-			cindexForeachChildObjCmd, (ClientData)NULL, NULL);
-   Tcl_Export(interp, cindexNs, "foreachChild", 0);
-   Tcl_CreateObjCommand(interp, "cindex::recurse",
-			cindexRecurseObjCmd, (ClientData)NULL, NULL);
-   Tcl_Export(interp, cindexNs, "recurse", 0);
+   status = cindexCreateCXTypeTable(interp);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   static struct cindexCommand cmdTable[] = {
+      { "index",
+        cindexIndexObjCmd },
+      { "foreachChild",
+        cindexForeachChildObjCmd },
+      { "recurse",
+        cindexRecurseObjCmd },
+      { NULL }
+   };
+   cindexCreateAndExportCommands(interp, "cindex::%s", cmdTable);
 
    Tcl_Namespace *cursorNs
       = Tcl_CreateNamespace(interp, "cindex::cursor", NULL, NULL);
-
    Tcl_Command cursorCmd
       = Tcl_CreateEnsemble(interp, "::cindex::cursor", cursorNs, 0);
    Tcl_Export(interp, cindexNs, "cursor", 0);
 
-   static struct cindexEnumLabels linkageLables = {
-      .names = {
-         "Invalid",
-         "NoLinkage",
-         "Internal",
-         "UniqueExternal",
-         "External",
-         NULL
-      }
-   };
-
    static struct cindexCursorGenericEnumInfo cursorLinkageInfo = {
       .proc   = (int (*)(CXCursor))clang_getCursorLinkage,
-      .labels = &linkageLables
+      .labels = &cindexLinkageLables
    };
 
    static struct cindexCursorGenericEnumInfo cursorAvailabilityInfo = {
@@ -1977,118 +2324,101 @@ int Cindex_Init(Tcl_Interp *interp)
       .labels = &cindexAvailabilityLabels
    };
 
-   static struct cindexEnumLabels languageLables = {
-      .names = {
-         "Invalid",
-         "C",
-         "ObjC",
-         "CPlusPlus",
-         NULL
-      }
-   };
-
    static struct cindexCursorGenericEnumInfo cursorLanguageInfo = {
       .proc   = (int (*)(CXCursor))clang_getCursorLanguage,
-      .labels = &languageLables
+      .labels = &cindexLanguageLables
    };
 
-   struct {
-      const char  *name;
-      int	 (*proc)(ClientData, Tcl_Interp *, int, Tcl_Obj *const []);
-      ClientData   clientData;
-   } cursorCmdTable[] = {
-      { "equals", cindexCursorEqualsObjCmd },
-      { "hash", cindexCursorHashObjCmd },
-      { "kind", cindexCursorKindObjCmd },
+   static struct cindexCommand cursorCmdTable[] = {
+      { "equals",
+        cindexCursorEqualsObjCmd },
+      { "hash",
+        cindexCursorHashObjCmd },
+      { "kind",
+        cindexCursorKindObjCmd },
       { "linkage",
         cindexCursorGenericEnumObjCmd, &cursorLinkageInfo },
       { "availability",
         cindexCursorGenericEnumObjCmd, &cursorAvailabilityInfo },
       { "language",
         cindexCursorGenericEnumObjCmd, &cursorLanguageInfo },
-      { "translationUnit", cindexCursorTranslationUnitObjCmd },
-      { "semanticParent", cindexCursorSemanticParentObjCmd },
-      { "lexicalParent", cindexCursorLexicalParentObjCmd },
-      { "overriddenCursors", cindexCursorOverriddenCursorsObjCmd },
-      { "includedFile", cindexCursorIncludedFileObjCmd },
+      { "translationUnit",
+        cindexCursorTranslationUnitObjCmd },
+      { "semanticParent",
+        cindexCursorSemanticParentObjCmd },
+      { "lexicalParent",
+        cindexCursorLexicalParentObjCmd },
+      { "overriddenCursors",
+        cindexCursorOverriddenCursorsObjCmd },
+      { "includedFile",
+        cindexCursorIncludedFileObjCmd },
       { "expansionLocation",
         cindexCursorRangeObjCmd,
         (ClientData)clang_getExpansionLocation },
-      { "presumedLocation", cindexCursorPresumedLocationObjCmd },
+      { "presumedLocation",
+        cindexCursorPresumedLocationObjCmd },
       { "spellingLocation",
         cindexCursorRangeObjCmd,
         (ClientData)clang_getSpellingLocation },
       { "fileLocation",
         cindexCursorRangeObjCmd,
         (ClientData)clang_getFileLocation },
+      { "type",
+        cindexCursorTypeObjCmd },
+      { "typedefDeclUnderlyingType",
+        cindexCursorTypedefDeclUnderlyingTypeObjCmd },
+      { NULL }
    };
-
-   for (int i = 0; i < sizeof cursorCmdTable / sizeof cursorCmdTable[0]; ++i) {
-      char buffer[80];
-
-      snprintf(buffer, sizeof buffer, "cindex::cursor::%s",
-               cursorCmdTable[i].name);
-      Tcl_CreateObjCommand(interp, buffer, cursorCmdTable[i].proc,
-                           cursorCmdTable[i].clientData, NULL);
-      Tcl_Export(interp, cursorNs, cursorCmdTable[i].name, 0);
-   }
+   cindexCreateAndExportCommands(interp, "cindex::cursor::%s", cursorCmdTable);
 
    Tcl_Namespace *cursorIsNs
       = Tcl_CreateNamespace(interp, "cindex::cursor::is", NULL, NULL);
-
    Tcl_Command cursorIsCmd
       = Tcl_CreateEnsemble(interp, "::cindex::cursor::is", cursorIsNs, 0);
    Tcl_Export(interp, cursorNs, "is", 0);
 
-   Tcl_CreateObjCommand(interp, "cindex::cursor::is::null",
-			cindexCursorIsNullObjCmd, (ClientData)NULL, NULL);
-   Tcl_Export(interp, cursorIsNs, "null", 0);
-
-   struct {
-      const char *name;
-      unsigned	(*proc)(enum CXCursorKind);
-   } isGenericTable[] = {
-      { "declaration",		clang_isDeclaration },
-      { "reference",		clang_isReference },
-      { "expression",		clang_isExpression },
-      { "statement",		clang_isStatement },
-      { "attribute",		clang_isAttribute },
-      { "invalid",		clang_isInvalid },
-      { "translationUnit",	clang_isTranslationUnit },
-      { "preprocessing",	clang_isPreprocessing },
-      { "unexposed",		clang_isUnexposed },
+   static struct cindexCommand cursorIsCmdTable[] = {
+      { "null",
+        cindexCursorIsNullObjCmd },
+      { "declaration",
+        cindexCursorIsGenericObjCmd, clang_isDeclaration },
+      { "reference",
+        cindexCursorIsGenericObjCmd, clang_isReference },
+      { "expression",
+	cindexCursorIsGenericObjCmd, clang_isExpression },
+      { "statement",
+        cindexCursorIsGenericObjCmd, clang_isStatement },
+      { "attribute",
+        cindexCursorIsGenericObjCmd, clang_isAttribute },
+      { "invalid",
+        cindexCursorIsGenericObjCmd, clang_isInvalid },
+      { "translationUnit",
+	cindexCursorIsGenericObjCmd, clang_isTranslationUnit },
+      { "preprocessing",
+	cindexCursorIsGenericObjCmd, clang_isPreprocessing },
+      { "unexposed",
+        cindexCursorIsGenericObjCmd, clang_isUnexposed },
+      { "inSystemHeader",
+        cindexCursorIsInSystemHeaderObjCmd },
+      { "inMainFile",
+        cindexCursorIsInMainFileObjCmd },
+      { NULL }
    };
-   int numIsGenericTable = sizeof isGenericTable / sizeof isGenericTable[0];
+   cindexCreateAndExportCommands
+      (interp, "cindex::cursor::is::%s", cursorIsCmdTable);
 
-   for (int i = 0; i < numIsGenericTable; ++i) {
-      char buffer[80];
+   Tcl_Namespace *typeNs
+      = Tcl_CreateNamespace(interp, "cindex::type", NULL, NULL);
+   Tcl_Command typeCmd
+      = Tcl_CreateEnsemble(interp, "::cindex::type", typeNs, 0);
+   Tcl_Export(interp, cindexNs, "type", 0);
 
-      snprintf(buffer, sizeof buffer,
-               "cindex::cursor::is::%s", isGenericTable[i].name);
-      Tcl_CreateObjCommand(interp, buffer, cindexCursorIsGenericObjCmd,
-                           (ClientData)isGenericTable[i].proc, NULL);
-      Tcl_Export(interp, cursorIsNs, isGenericTable[i].name, 0);
-   }
-
-   struct {
-      const char  *name;
-      int	 (*proc)(ClientData, Tcl_Interp *, int, Tcl_Obj *const []);
-      ClientData   clientData;
-   } cursorIsSubCmdTable[] = {
-      { "inSystemHeader", cindexCursorIsInSystemHeaderObjCmd },
-      { "inMainFile", cindexCursorIsInMainFileObjCmd },
+   static struct cindexCommand typeCmdTable[] = {
+      { "spelling",
+        cindexTypeSpellingObjCmd },
+      { NULL }
    };
-   int numIsSubCmd = sizeof cursorIsSubCmdTable / sizeof cursorIsSubCmdTable[0];
-
-   for (int i = 0; i < numIsSubCmd; ++i) {
-      char buffer[80];
-
-      snprintf(buffer, sizeof buffer,
-               "cindex::cursor::is::%s", cursorIsSubCmdTable[i].name);
-      Tcl_CreateObjCommand(interp, buffer, cursorIsSubCmdTable[i].proc,
-                           cursorIsSubCmdTable[i].clientData, NULL);
-      Tcl_Export(interp, cursorIsNs, cursorIsSubCmdTable[i].name, 0);
-   }
+   cindexCreateAndExportCommands(interp, "cindex::type::%s", typeCmdTable);
 
    {
       Tcl_Obj *name =
