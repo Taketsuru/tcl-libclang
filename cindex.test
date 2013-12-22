@@ -166,6 +166,7 @@ test cindex_type-0.0 "type / alpha omega" \
     set mytype [cursor type [mytu cursor]]
     type spelling $mytype
     type equal $mytype $mytype
+    type canonicalType $mytype
     return
 }
 

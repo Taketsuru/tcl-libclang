@@ -2466,6 +2466,31 @@ static int cindexTypeEqualObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+//------------------------------------------------ cindex::type::canonicalType
+
+static int cindexTypeCanonicalTypeObjCmd(ClientData     clientData,
+                                         Tcl_Interp    *interp,
+                                         int            objc,
+                                         Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "type");
+      return TCL_ERROR;
+   }
+
+   CXType cxtype;
+   int status = cindexGetCXTypeObj(interp, objv[1], &cxtype);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXType   result    = clang_getCanonicalType(cxtype);
+   Tcl_Obj *resultObj = cindexNewCXTypeObj(interp, result);
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
 //------------------------------------------------------------- initialization
 
 int cindex_createCallingConvTable(Tcl_Interp *interp)
@@ -2668,6 +2693,8 @@ int Cindex_Init(Tcl_Interp *interp)
         cindexTypeSpellingObjCmd },
       { "equal",
         cindexTypeEqualObjCmd },
+      { "canonicalType",
+        cindexTypeCanonicalTypeObjCmd },
       { NULL }
    };
    cindexCreateAndExportCommands(interp, "cindex::type::%s", typeCmdTable);
