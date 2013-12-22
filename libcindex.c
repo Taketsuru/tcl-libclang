@@ -2466,9 +2466,9 @@ static int cindexTypeEqualObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
-//------------------------------------------------ cindex::type::canonicalType
+//--------------------------------------------------------------- type -> type
 
-static int cindexTypeCanonicalTypeObjCmd(ClientData     clientData,
+static int cindexGenericTypeToTypeObjCmd(ClientData     clientData,
                                          Tcl_Interp    *interp,
                                          int            objc,
                                          Tcl_Obj *const objv[])
@@ -2484,8 +2484,9 @@ static int cindexTypeCanonicalTypeObjCmd(ClientData     clientData,
       return status;
    }
 
-   CXType   result    = clang_getCanonicalType(cxtype);
-   Tcl_Obj *resultObj = cindexNewCXTypeObj(interp, result);
+   CXType (*proc)(CXType) = (CXType (*)(CXType))clientData;
+   CXType   result        = proc(cxtype);
+   Tcl_Obj *resultObj     = cindexNewCXTypeObj(interp, result);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
@@ -2493,7 +2494,7 @@ static int cindexTypeCanonicalTypeObjCmd(ClientData     clientData,
 
 //-------------------------------------------- cindex::type returning unsigned
 
-static int cindexTypeGenericUnsignedObjCmd(ClientData     clientData,
+static int cindexGenericTypeToUnsignedObjCmd(ClientData     clientData,
                                            Tcl_Interp    *interp,
                                            int            objc,
                                            Tcl_Obj *const objv[])
@@ -2720,7 +2721,8 @@ int Cindex_Init(Tcl_Interp *interp)
       { "equal",
         cindexTypeEqualObjCmd },
       { "canonicalType",
-        cindexTypeCanonicalTypeObjCmd },
+        cindexGenericTypeToTypeObjCmd,
+        clang_getCanonicalType },
       { NULL }
    };
    cindexCreateAndExportCommands(interp, "cindex::type::%s", typeCmdTable);
@@ -2733,13 +2735,13 @@ int Cindex_Init(Tcl_Interp *interp)
 
    static struct cindexCommand typeIsCmdTable[] = {
       { "constQualified",
-        cindexTypeGenericUnsignedObjCmd,
+        cindexGenericTypeToUnsignedObjCmd,
         clang_isConstQualifiedType },
       { "volatileQualified",
-        cindexTypeGenericUnsignedObjCmd,
+        cindexGenericTypeToUnsignedObjCmd,
         clang_isVolatileQualifiedType },
       { "restrictQualified",
-        cindexTypeGenericUnsignedObjCmd,
+        cindexGenericTypeToUnsignedObjCmd,
         clang_isRestrictQualifiedType },
       { NULL }
    };
