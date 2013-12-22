@@ -2324,6 +2324,37 @@ static int cindexCursorEnumConstantDeclValueObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+//------------------------------------------ cindex::cursor::fieldDeclBitWidth
+
+static int cindexCursorFieldDeclBitWidthObjCmd(ClientData     clientData,
+                                               Tcl_Interp    *interp,
+                                               int            objc,
+                                               Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   if (cursor.kind != CXCursor_FieldDecl) {
+      Tcl_SetObjResult
+         (interp, Tcl_NewStringObj("cursor kind must be FieldDecl.", -1));
+      return TCL_ERROR;
+   }
+
+   int      result    = clang_getFieldDeclBitWidth(cursor);
+   Tcl_Obj *resultObj = Tcl_NewIntObj(result);
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
 //----------------------------------------------------- cindex::type::spelling
 
 static int cindexTypeSpellingObjCmd(ClientData     clientData,
@@ -2496,6 +2527,8 @@ int Cindex_Init(Tcl_Interp *interp)
         cindexCursorEnumDeclIntegerTypeObjCmd },
       { "enumConstantDeclValue",
         cindexCursorEnumConstantDeclValueObjCmd },
+      { "fieldDeclBitWidth",
+        cindexCursorFieldDeclBitWidthObjCmd },
       { NULL }
    };
    cindexCreateAndExportCommands(interp, "cindex::cursor::%s", cursorCmdTable);

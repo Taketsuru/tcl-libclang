@@ -145,6 +145,10 @@ test cindex_cursor-0.0 "cursor / alpha omega" \
                 recurse
             } EnumConstantDecl {
                 cursor enumConstantDeclValue $child
+            } StructDecl {
+                recurse
+            } FieldDecl {
+                cursor fieldDeclBitWidth $child
             }
         }
     }
