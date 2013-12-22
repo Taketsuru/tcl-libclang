@@ -2412,12 +2412,12 @@ static int cindexCursorArgumentObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
-//----------------------------------------------------- cindex::type::spelling
+//----------------------------------------------------- type -> string command
 
-static int cindexTypeSpellingObjCmd(ClientData     clientData,
-                                    Tcl_Interp    *interp,
-                                    int            objc,
-                                    Tcl_Obj *const objv[])
+static int cindexGenericTypeToStringObjCmd(ClientData     clientData,
+                                           Tcl_Interp    *interp,
+                                           int            objc,
+                                           Tcl_Obj *const objv[])
 {
    if (objc != 2) {
       Tcl_WrongNumArgs(interp, 1, objv, "type");
@@ -2430,11 +2430,12 @@ static int cindexTypeSpellingObjCmd(ClientData     clientData,
       return status;
    }
 
-   CXString spelling = clang_getTypeSpelling(cxtype);
-   const char *spellingCstr = clang_getCString(spelling);
-   Tcl_Obj *result = Tcl_NewStringObj(spellingCstr, -1);
-   Tcl_SetObjResult(interp, result);
-   clang_disposeString(spelling);
+   CXString (*proc)(CXType) = (CXString (*)(CXType))clientData;
+   CXString    result       = proc(cxtype);
+   const char *resultCstr   = clang_getCString(result);
+   Tcl_Obj    *resultObj    = Tcl_NewStringObj(resultCstr, -1);
+   Tcl_SetObjResult(interp, resultObj);
+   clang_disposeString(result);
 
    return TCL_OK;
 }
@@ -2717,7 +2718,8 @@ int Cindex_Init(Tcl_Interp *interp)
 
    static struct cindexCommand typeCmdTable[] = {
       { "spelling",
-        cindexTypeSpellingObjCmd },
+        cindexGenericTypeToStringObjCmd,
+        clang_getTypeSpelling },
       { "equal",
         cindexTypeEqualObjCmd },
       { "canonicalType",
