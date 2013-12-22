@@ -2380,6 +2380,38 @@ static int cindexCursorNumArgumentsObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+//--------------------------------------------------- cindex::cursor::argument
+
+static int cindexCursorArgumentObjCmd(ClientData     clientData,
+                                      Tcl_Interp    *interp,
+                                      int            objc,
+                                      Tcl_Obj *const objv[])
+{
+   if (objc != 3) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor argumentIndex");
+      return TCL_ERROR;
+   }
+
+   int argumentIndex;
+   int status = Tcl_GetIntFromObj(interp, objv[2], &argumentIndex);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   struct cindexTUInfo *tuInfo;
+   CXCursor cursor;
+   status = cindexGetCursorFromObj(interp, objv[1], &cursor, &tuInfo);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXCursor  cxresult  = clang_Cursor_getArgument(cursor, argumentIndex);
+   Tcl_Obj  *resultObj = cindexNewCursorObj(interp, cxresult, tuInfo);
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
 //----------------------------------------------------- cindex::type::spelling
 
 static int cindexTypeSpellingObjCmd(ClientData     clientData,
@@ -2556,6 +2588,8 @@ int Cindex_Init(Tcl_Interp *interp)
         cindexCursorFieldDeclBitWidthObjCmd },
       { "numArguments",
         cindexCursorNumArgumentsObjCmd },
+      { "argument",
+        cindexCursorArgumentObjCmd },
       { NULL }
    };
    cindexCreateAndExportCommands(interp, "cindex::cursor::%s", cursorCmdTable);

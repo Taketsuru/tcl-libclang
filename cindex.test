@@ -139,6 +139,7 @@ test cindex_cursor-0.0 "cursor / alpha omega" \
     cursor type $root
     cursor typedefDeclUnderlyingType $root
     cursor numArguments $root
+    cursor argument $root 0
     foreachChild child $root {
         switch -- [lindex $child 0] {
             EnumDecl {
