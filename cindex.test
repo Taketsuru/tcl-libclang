@@ -111,7 +111,7 @@ test cindex_cursor-0.0 "cursor / alpha omega" \
     -cleanup $cleanupMytu \
 -body {
     set root [mytu cursor]
-    cursor equals $root $root
+    cursor equal $root $root
     cursor hash $root
     cursor linkage $root
     cursor availability $root
@@ -165,6 +165,7 @@ test cindex_type-0.0 "type / alpha omega" \
 -body {
     set mytype [cursor type [mytu cursor]]
     type spelling $mytype
+    type equal $mytype $mytype
     return
 }
 

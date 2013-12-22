@@ -1730,12 +1730,12 @@ static int cindexRecurseObjCmd(ClientData clientData,
    return TCL_RECURSE;
 }
 
-//--------------------------------------------------- cindex::cursor::equals
+//---------------------------------------------------- cindex::cursor::equal
 
-static int cindexCursorEqualsObjCmd(ClientData clientData,
-                                    Tcl_Interp *interp,
-                                    int objc,
-                                    Tcl_Obj *const objv[])
+static int cindexCursorEqualObjCmd(ClientData clientData,
+                                   Tcl_Interp *interp,
+                                   int objc,
+                                   Tcl_Obj *const objv[])
 {
    if (objc != 3) {
       Tcl_WrongNumArgs(interp, 1, objv, "cursor1 cursor2");
@@ -2439,6 +2439,33 @@ static int cindexTypeSpellingObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+//-------------------------------------------------------- cindex::type::equal
+
+static int cindexTypeEqualObjCmd(ClientData     clientData,
+                                 Tcl_Interp    *interp,
+                                 int            objc,
+                                 Tcl_Obj *const objv[])
+{
+   if (objc != 3) {
+      Tcl_WrongNumArgs(interp, 1, objv, "type1 type2");
+      return TCL_ERROR;
+   }
+
+   CXType cxtypes[2];
+   for (int i = 0; i < 2; ++i) {
+      int status = cindexGetCXTypeObj(interp, objv[1 + i], &cxtypes[i]);
+      if (status != TCL_OK) {
+         return status;
+      }
+   }
+
+   unsigned result = clang_equalTypes(cxtypes[0], cxtypes[1]);
+   Tcl_Obj *resultObj = Tcl_NewIntObj(result);
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
 //------------------------------------------------------------- initialization
 
 int cindex_createCallingConvTable(Tcl_Interp *interp)
@@ -2545,8 +2572,8 @@ int Cindex_Init(Tcl_Interp *interp)
    };
 
    static struct cindexCommand cursorCmdTable[] = {
-      { "equals",
-        cindexCursorEqualsObjCmd },
+      { "equal",
+        cindexCursorEqualObjCmd },
       { "hash",
         cindexCursorHashObjCmd },
       { "linkage",
@@ -2639,6 +2666,8 @@ int Cindex_Init(Tcl_Interp *interp)
    static struct cindexCommand typeCmdTable[] = {
       { "spelling",
         cindexTypeSpellingObjCmd },
+      { "equal",
+        cindexTypeEqualObjCmd },
       { NULL }
    };
    cindexCreateAndExportCommands(interp, "cindex::type::%s", typeCmdTable);
