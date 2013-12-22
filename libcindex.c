@@ -2723,6 +2723,21 @@ int Cindex_Init(Tcl_Interp *interp)
       { "canonicalType",
         cindexGenericTypeToTypeObjCmd,
         clang_getCanonicalType },
+      { "pointeeType",
+        cindexGenericTypeToTypeObjCmd,
+        clang_getPointeeType },
+      { "resultType",
+        cindexGenericTypeToTypeObjCmd,
+        clang_getResultType },
+      { "elementType",
+        cindexGenericTypeToTypeObjCmd,
+        clang_getElementType },
+      { "arrayElementType",
+        cindexGenericTypeToTypeObjCmd,
+        clang_getArrayElementType },
+      { "classType",
+        cindexGenericTypeToTypeObjCmd,
+        clang_Type_getClassType },
       { NULL }
    };
    cindexCreateAndExportCommands(interp, "cindex::type::%s", typeCmdTable);
@@ -2743,6 +2758,12 @@ int Cindex_Init(Tcl_Interp *interp)
       { "restrictQualified",
         cindexGenericTypeToUnsignedObjCmd,
         clang_isRestrictQualifiedType },
+      { "PODType",
+        cindexGenericTypeToUnsignedObjCmd,
+        clang_isPODType },
+      { "functionTypeVariadic",
+        cindexGenericTypeToUnsignedObjCmd,
+        clang_isFunctionTypeVariadic },
       { NULL }
    };
    cindexCreateAndExportCommands(interp, "cindex::type::is::%s", typeIsCmdTable);
