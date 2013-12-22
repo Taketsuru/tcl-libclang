@@ -138,6 +138,7 @@ test cindex_cursor-0.0 "cursor / alpha omega" \
     cursor is inMainFile $root
     cursor type $root
     cursor typedefDeclUnderlyingType $root
+    cursor enumDeclIntegerType $root
     return
 }
 

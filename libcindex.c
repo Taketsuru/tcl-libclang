@@ -2204,6 +2204,31 @@ static int cindexCursorTypedefDeclUnderlyingTypeObjCmd(ClientData     clientData
    return TCL_OK;
 }
 
+//---------------------------------------- cindex::cursor::enumDeclIntegerType
+
+static int cindexCursorEnumDeclIntegerTypeObjCmd(ClientData     clientData,
+                                                 Tcl_Interp    *interp,
+                                                 int            objc,
+                                                 Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXType   cxtype = clang_getEnumDeclIntegerType(cursor);
+   Tcl_Obj *result = cindexNewCXTypeObj(interp, cxtype);
+   Tcl_SetObjResult(interp, result);
+
+   return TCL_OK;
+}
+
 //----------------------------------------------------- cindex::type::spelling
 
 static int cindexTypeSpellingObjCmd(ClientData     clientData,
@@ -2372,6 +2397,8 @@ int Cindex_Init(Tcl_Interp *interp)
         cindexCursorTypeObjCmd },
       { "typedefDeclUnderlyingType",
         cindexCursorTypedefDeclUnderlyingTypeObjCmd },
+      { "enumDeclIntegerType",
+        cindexCursorEnumDeclIntegerTypeObjCmd },
       { NULL }
    };
    cindexCreateAndExportCommands(interp, "cindex::cursor::%s", cursorCmdTable);
