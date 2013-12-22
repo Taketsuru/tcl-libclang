@@ -159,12 +159,8 @@ cindexCreateNameValueTable(Tcl_Interp                        *interp,
 
 //-------------------------------------------------------------- integer types
 
-static Tcl_Obj *cindexNewUintmaxObj(uintmax_t value)
+static Tcl_Obj *cindexNewBignumObj(uintmax_t value, int negative)
 {
-   if (value <= LONG_MAX) {
-      return Tcl_NewLongObj(value);
-   }
-
    mp_int acc;
    mp_init(&acc);
 
@@ -181,12 +177,36 @@ static Tcl_Obj *cindexNewUintmaxObj(uintmax_t value)
       value >>= digit_bit;
    }
 
+   if (negative) {
+      mp_neg(&acc, &acc);
+   }
+
    Tcl_Obj *result = Tcl_NewBignumObj(&acc);
 
    mp_clear(&acc);
    mp_clear(&digit);
 
    return result;
+}
+
+static Tcl_Obj *cindexNewUintmaxObj(uintmax_t value)
+{
+   if (value <= LONG_MAX) {
+      return Tcl_NewLongObj(value);
+   }
+
+   return cindexNewBignumObj(value, 0);
+}
+
+static Tcl_Obj *cindexNewIntmaxObj(intmax_t value)
+{
+   if (LONG_MIN <= value && value <= LONG_MAX) {
+      return Tcl_NewLongObj(value);
+   }
+
+   return 0 <= value
+      ? cindexNewBignumObj(value, 0)
+      : cindexNewBignumObj(-value, 1);
 }
 
 static Tcl_Obj *cindexNewPointerObj(const void *ptr)
@@ -2222,8 +2242,83 @@ static int cindexCursorEnumDeclIntegerTypeObjCmd(ClientData     clientData,
       return status;
    }
 
+   if (cursor.kind != CXCursor_EnumDecl) {
+      Tcl_SetObjResult
+         (interp, Tcl_NewStringObj("cursor kind must be EnumDecl", -1));
+      return TCL_ERROR;
+   }
+
    CXType   cxtype = clang_getEnumDeclIntegerType(cursor);
    Tcl_Obj *result = cindexNewCXTypeObj(interp, cxtype);
+   Tcl_SetObjResult(interp, result);
+
+   return TCL_OK;
+}
+
+//-------------------------------------- cindex::cursor::enumConstantDeclValue
+
+static int cindexCursorEnumConstantDeclValueObjCmd(ClientData     clientData,
+                                                   Tcl_Interp    *interp,
+                                                   int            objc,
+                                                   Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   CXCursor cursor;
+   int status = cindexGetCursorFromObj(interp, objv[1], &cursor, NULL);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   if (cursor.kind != CXCursor_EnumConstantDecl) {
+      Tcl_SetObjResult
+         (interp, Tcl_NewStringObj("cursor kind must be EnumConstantDecl", -1));
+      return TCL_ERROR;
+   }
+
+   Tcl_Obj *result = NULL;
+
+   CXCursor parent = clang_getCursorSemanticParent(cursor);
+   assert(parent.kind == CXCursor_EnumDecl);
+   CXType inttype = clang_getEnumDeclIntegerType(parent);
+   switch (inttype.kind) {
+
+   case CXType_Bool:
+   case CXType_Char_U:
+   case CXType_UChar:
+   case CXType_Char16:
+   case CXType_Char32:
+   case CXType_UShort:
+   case CXType_UInt:
+   case CXType_ULong:
+   case CXType_ULongLong:
+   case CXType_UInt128: {
+      unsigned long long value = clang_getEnumConstantDeclUnsignedValue(cursor);
+      result = cindexNewUintmaxObj(value);
+      break;
+   }
+
+   case CXType_Char_S:
+   case CXType_SChar:
+   case CXType_WChar:
+   case CXType_Short:
+   case CXType_Int:
+   case CXType_Long:
+   case CXType_LongLong:
+   case CXType_Int128: {
+      long long value = clang_getEnumConstantDeclValue(cursor);
+      result = cindexNewIntmaxObj(value);
+      break;
+   }
+
+   default:
+      Tcl_Panic("clang_getEnumDeclIntegerType returns unexpected type: %d",
+                inttype.kind);
+   }
+
    Tcl_SetObjResult(interp, result);
 
    return TCL_OK;
@@ -2399,6 +2494,8 @@ int Cindex_Init(Tcl_Interp *interp)
         cindexCursorTypedefDeclUnderlyingTypeObjCmd },
       { "enumDeclIntegerType",
         cindexCursorEnumDeclIntegerTypeObjCmd },
+      { "enumConstantDeclValue",
+        cindexCursorEnumConstantDeclValueObjCmd },
       { NULL }
    };
    cindexCreateAndExportCommands(interp, "cindex::cursor::%s", cursorCmdTable);

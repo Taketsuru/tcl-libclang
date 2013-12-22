@@ -138,7 +138,16 @@ test cindex_cursor-0.0 "cursor / alpha omega" \
     cursor is inMainFile $root
     cursor type $root
     cursor typedefDeclUnderlyingType $root
-    cursor enumDeclIntegerType $root
+    foreachChild child $root {
+        switch -- [lindex $child 0] {
+            EnumDecl {
+                cursor enumDeclIntegerType $child
+                recurse
+            } EnumConstantDecl {
+                cursor enumConstantDeclValue $child
+            }
+        }
+    }
     return
 }
 
