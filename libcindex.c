@@ -1435,10 +1435,14 @@ static int cindexTUInstanceObjCmd(ClientData     clientData,
    }
 
    static struct cindexCommand subcommands[] = {
-      { "save",		 cindexTranslationUnitSaveObjCmd },
-      { "reparse",	 cindexTranslationUnitReparseObjCmd },
-      { "resourceUsage", cindexTranslationUnitResourceUsageObjCmd },
-      { "cursor",	 cindexTranslationUnitCursorObjCmd },
+      { "save",
+        cindexTranslationUnitSaveObjCmd },
+      { "reparse",
+        cindexTranslationUnitReparseObjCmd },
+      { "resourceUsage",
+        cindexTranslationUnitResourceUsageObjCmd },
+      { "cursor",
+        cindexTranslationUnitCursorObjCmd },
       { NULL },
    };
 
