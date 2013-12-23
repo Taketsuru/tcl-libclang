@@ -103,6 +103,9 @@ test cindex_tu-0.0 "translation unit / alpha omega" \
     mytu cursor
     mytu isMultipleIncludeGuarded libcindex.c
     mytu fileUniqueID libcindex.c
+    mytu diagnostic number
+    # mytu diagnostic decode 0
+    # mytu diagnostic format 0
     return
 }
 
@@ -142,6 +145,8 @@ test cindex_cursor-0.0 "cursor / alpha omega" \
     cursor typedefDeclUnderlyingType $root
     cursor numArguments $root
     cursor argument $root 0
+    cursor objCTypeEncoding $root
+    cursor resultType $root
     foreachChild child $root {
         switch -- [lindex $child 0] {
             EnumDecl {
@@ -183,6 +188,47 @@ test cindex_type-0.0 "type / alpha omega" \
     type is restrictQualified $mytype
     type is PODType $mytype
     type is functionTypeVariadic $mytype
+    type declaration $mytype
+    type functionTypeCallingConvention $mytype
+    type functionTypeNumArgTypes $mytype
+    type argType $mytype 0
+    type offsetof $mytype test
+    return
+}
+
+# ------------------------------------------------------------------- location 
+
+test cindex_location-0.0 "location / alpha omega" \
+-setup $setupMytu \
+-cleanup $setupMytu \
+-body {
+    set mylocation [cursor location [mytu cursor]]
+    location presumedLocation $mylocation
+    location expansionLocation $mylocation
+    location spellingLocation $mylocation
+    location fileLocation $mylocation
+    location is null $mylocation
+    location is inSystemHeader $mylocation
+    location is inMainFile $mylocation
+    location equal $mylocation $mylocation
+    return
+}
+
+# ---------------------------------------------------------------------- range
+
+test cindex_range-0.0 "range / alpha omega" \
+-setup $setupMytu \
+-cleanup $setupMytu \
+-body {
+    set myrange [cursor extent [mytu cursor]]
+    range start $myrange
+    range end $myrange
+    range presumedLocation $myrange
+    range expansionLocation $myrange
+    range spellingLocation $myrange
+    range fileLocation $myrange
+    range is null $myrange
+    range equal $myrange $myrange
     return
 }
 

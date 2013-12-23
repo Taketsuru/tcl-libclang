@@ -1,4 +1,4 @@
-CFLAGS = -g -fPIC -I /usr/local/include -I /usr/local/include/tcl8.6/
+CFLAGS = -Wall -g -fPIC -I /usr/local/include -I /usr/local/include/tcl8.6/
 
 libcindex.so: libcindex.o
 	$(CC) -shared -o libcindex.so libcindex.o \
@@ -7,4 +7,3 @@ libcindex.so: libcindex.o
 
 clean:
 	rm -f libcindex.so libcindex.o
-
