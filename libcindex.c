@@ -172,7 +172,7 @@ static Tcl_Obj *cindexNewBignumObj(uintmax_t value, int negative)
 
    for (int i = 0; value != 0; i += digit_bit) {
       mp_set(&digit, value & digit_mask);
-      mp_lshd(&digit, i);
+      mp_mul_2d(&digit, i, &digit);
       mp_or(&digit, &acc, &acc);
       value >>= digit_bit;
    }
@@ -235,7 +235,7 @@ cindexGetPointerFromObj(Tcl_Interp *interp, Tcl_Obj *obj, void **ptrOut)
    uintptr_t result = 0;
    for (int i = 0; i < sizeof result * CHAR_BIT; i += digit_bit) {
       uintptr_t digit = (uintptr_t)bvalue.dp[0] & digit_mask;
-      mp_rshd(&bvalue, digit_bit);
+      mp_div_2d(&bvalue, digit_bit, &bvalue, NULL);
       result |= digit << i;
    }
 
