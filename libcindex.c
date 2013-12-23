@@ -1078,10 +1078,6 @@ cindexGetCursorFromObj(Tcl_Interp *interp, Tcl_Obj *obj,
 
 //---------------------------------------------------- source location mapping
 
-static Tcl_Obj *cindexFile;
-static Tcl_Obj *cindexLine;
-static Tcl_Obj *cindexColumn;
-static Tcl_Obj *cindexOffset;
 static Tcl_Obj *cindexFileNameCache[64];
 
 static unsigned long cindexFileNameHash(const char *str)
@@ -2592,18 +2588,6 @@ int Cindex_Init(Tcl_Interp *interp)
 
    cindexNone = Tcl_NewStringObj("-none", -1);
    Tcl_IncrRefCount(cindexNone);
-
-   cindexFile = Tcl_NewStringObj("file", -1);
-   Tcl_IncrRefCount(cindexFile);
-
-   cindexLine = Tcl_NewStringObj("line", -1);
-   Tcl_IncrRefCount(cindexLine);
-
-   cindexColumn = Tcl_NewStringObj("column", -1);
-   Tcl_IncrRefCount(cindexColumn);
-
-   cindexOffset = Tcl_NewStringObj("offset", -1);
-   Tcl_IncrRefCount(cindexOffset);
 
    Tcl_Namespace *cindexNs
       = Tcl_CreateNamespace(interp, "cindex", NULL, NULL);
