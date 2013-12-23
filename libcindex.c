@@ -2790,7 +2790,8 @@ int Cindex_Init(Tcl_Interp *interp)
         clang_isFunctionTypeVariadic },
       { NULL }
    };
-   cindexCreateAndExportCommands(interp, "cindex::type::is::%s", typeIsCmdTable);
+   cindexCreateAndExportCommands
+      (interp, "cindex::type::is::%s", typeIsCmdTable);
 
    {
       Tcl_Obj *name =
