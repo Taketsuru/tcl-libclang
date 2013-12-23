@@ -101,6 +101,8 @@ test cindex_tu-0.0 "translation unit / alpha omega" \
     mytu reparse
     mytu resourceUsage
     mytu cursor
+    mytu isMultipleIncludeGuarded libcindex.c
+    mytu fileUniqueID libcindex.c
     return
 }
 

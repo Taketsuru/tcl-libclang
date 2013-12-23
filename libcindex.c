@@ -1422,6 +1422,65 @@ static int cindexTranslationUnitCursorObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+//---------------- cindex::<translationUnit instance> isMultipleIncludeGuarded
+
+static int
+cindexTranslationUnitIsMultipleIncludeGuardedObjCmd(ClientData     clientData,
+                                                    Tcl_Interp    *interp,
+                                                    int            objc,
+                                                    Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "filename");
+      return TCL_ERROR;
+   }
+
+   struct cindexTUInfo *info = (struct cindexTUInfo *)clientData;
+   CXFile file = clang_getFile(info->translationUnit,
+                               Tcl_GetStringFromObj(objv[1], NULL));
+   unsigned result
+      = clang_isFileMultipleIncludeGuarded(info->translationUnit, file);
+   Tcl_Obj *resultObj = Tcl_NewIntObj(result);
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
+//---------------------------- cindex::<translationUnit instance> fileUniqueID
+
+static int cindexTranslationUnitFileUniqueIDObjCmd(ClientData     clientData,
+                                                   Tcl_Interp    *interp,
+                                                   int            objc,
+                                                   Tcl_Obj *const objv[])
+{
+   if (objc != 2) {
+      Tcl_WrongNumArgs(interp, 1, objv, "filename");
+      return TCL_ERROR;
+   }
+
+   struct cindexTUInfo *info = (struct cindexTUInfo *)clientData;
+   CXFile file = clang_getFile(info->translationUnit,
+                               Tcl_GetStringFromObj(objv[1], NULL));
+   CXFileUniqueID uniqueId;
+   if (clang_getFileUniqueID(file, &uniqueId)) {
+      Tcl_SetObjResult(interp,
+                       Tcl_NewStringObj("failed to get file unique ID.", -1));
+      return TCL_ERROR;
+   }
+
+   enum {
+      nelms = sizeof uniqueId.data / sizeof uniqueId.data[0]
+   };
+   Tcl_Obj *elms[nelms];
+   for (int i = 0; i < nelms; ++i) {
+      elms[i] = cindexNewUintmaxObj(uniqueId.data[i]);
+   }
+   Tcl_Obj *resultObj = Tcl_NewListObj(nelms, elms);
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
 //--------------------------------------- cindex::<translationUnit instance>
 
 static int cindexTUInstanceObjCmd(ClientData     clientData,
@@ -1443,6 +1502,10 @@ static int cindexTUInstanceObjCmd(ClientData     clientData,
         cindexTranslationUnitResourceUsageObjCmd },
       { "cursor",
         cindexTranslationUnitCursorObjCmd },
+      { "isMultipleIncludeGuarded",
+        cindexTranslationUnitIsMultipleIncludeGuardedObjCmd },
+      { "fileUniqueID",
+        cindexTranslationUnitFileUniqueIDObjCmd },
       { NULL },
    };
 
