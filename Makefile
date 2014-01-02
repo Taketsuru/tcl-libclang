@@ -1,4 +1,4 @@
-CFLAGS = -Wall -g -fPIC -I /usr/local/include -I /usr/local/include/tcl8.6/
+CFLAGS = -DBIST -Wall -g -fPIC -I /usr/local/include -I /usr/local/include/tcl8.6/
 
 libcindex.so: libcindex.o
 	$(CC) -shared -o libcindex.so libcindex.o \
