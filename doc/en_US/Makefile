@@ -26,49 +26,8 @@
 #
 # ============================================================================
 
-TCLSH		= /usr/local/bin/tclsh8.6
-FOP		= /usr/local/bin/fop
-XSLTPROC	= /usr/local/bin/xsltproc
-XMLLINT		= /usr/local/bin/xmllint
-CFLAGS		= -DBIST -Wall -g -fPIC \
-		-I /usr/local/include -I /usr/local/include/tcl8.6/
-DOCBOOK_RNG	= ../docbook-5.0/rng/docbook.rng
-DOCBOOK_XSL	= ../docbook-xsl-ns-1.78.1
+default:
+	(cd ../..; $(MAKE) $(MAKEFLAGS) refman.html obj/refman.manpages)
 
-default: libcindex.so refman.html obj/refman.manpages
-
-obj/libcindex.o: src/libcindex.c
-	mkdir -p obj
-	$(CC) -c -o obj/libcindex.o $(CFLAGS) src/libcindex.c
-
-libcindex.so: obj/libcindex.o
-	$(CC) -shared -o libcindex.so obj/libcindex.o \
-		-L /usr/local/lib -ltcl86 -lclang
-	chmod -x libcindex.so
-
-obj/refman.valid: doc/en_US/refman.docbook
-	mkdir -p obj
-	rm -f refman.valid
-	$(XMLLINT) --noout --relaxng $(DOCBOOK_RNG) doc/en_US/refman.docbook
-	touch obj/refman.valid
-
-refman.html: obj/refman.valid
-	$(XSLTPROC) -o refman.html \
-		$(DOCBOOK_XSL)/html/docbook.xsl \
-		doc/en_US/refman.docbook
-
-obj/refman.manpages: obj/refman.valid
-	mkdir -p obj man/man1
-	rm -f obj/refman.manpages
-	$(XSLTPROC) -o man/man1/libcindex.1 \
-		$(DOCBOOK_XSL)/manpages/docbook.xsl \
-		doc/en_US/refman.docbook
-	touch obj/refman.manpages
-
-clean:
-	rm -f libcindex.so refman.html
-	rm -rf obj man
-
-test:
-	TCLLIBPATH=. $(TCLSH) src/cindex.test
-
+%:
+	(cd ../..; $(MAKE) $(MAKEFLAGS) $@)

@@ -1,6 +1,6 @@
 # ============================================================================
 #
-# Copyright (c) 2013 Taketsuru <taketsuru11@gmail.com>.
+# Copyright (c) 2014 Taketsuru <taketsuru11@gmail.com>.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -48,7 +48,7 @@ test cindex_index-1.0 "index / alpha omega" -body {
     return
 }
 
-test cindex_index-1.1 "index options / default value" -setup {
+test cindex_index-2.0 "index options / default value" -setup {
     index myindex
 } -cleanup {
     rename myindex {}
@@ -56,41 +56,49 @@ test cindex_index-1.1 "index options / default value" -setup {
     myindex options
 } -result -none
 
-test cindex_index-1.2 "index options / set simple option" -setup {
+test cindex_index-3.0 \
+    "index options / set simple option -backgroundIndexing" -setup {
     index myindex
 } -cleanup {
     rename myindex {}
 } -body {
-    myindex options -threadBackgroundPriorityForIndexing
+    myindex options -backgroundIndexing
     myindex options
-} -result -threadBackgroundPriorityForIndexing
+} -result -backgroundIndexing
 
-test cindex_index-1.3 "index options / set combined option" -setup {
+test cindex_index-3.1 \
+    "index options / set simple option -backgroundEditing" -setup {
     index myindex
 } -cleanup {
     rename myindex {}
 } -body {
-    myindex options -threadBackgroundPriorityForAll
+    myindex options -backgroundEditing
     myindex options
-} -result -threadBackgroundPriorityForAll
+} -result -backgroundEditing
 
-# XXX various options to myindex parse command should be tested.
-# -detailPreprocessingRecord
-# -incomplete
-# -precompiledPreamble
-# -cacheCompletionResults
-# -forSerialization
-# -cxxChainedPCH
-# -skipFunctionBodies
-# -includeBriefCommentsInCodeCompletion
+test cindex_index-4.0 "index options / set combined option" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options -background
+    myindex options
+} -result -background
 
-# ----------------------------------------------------------- translation unit
+test cindex_index-5.0 "index options / set multiple options" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options -backgroundIndexing -backgroundEditing
+    myindex options
+} -result -background
+
+# -------------------------------------------------- indexName translationUnit
 
 set setupMytu {
     index myindex
-    myindex createTranslationUnit mytu -- \
-        -I /usr/local/include -I /usr/local/include/tcl8.6 \
-        libcindex.c
+    myindex translationUnit -- mytu src/testdata/refman_index.c
 }
 
 set cleanupMytu {
@@ -100,20 +108,21 @@ set cleanupMytu {
 
 test cindex_tu-0.0 "translation unit / alpha omega" \
 -setup $setupMytu \
--cleanup [concat $cleanupMytu {
-    ;file delete cindex.ast
-} ] -body {
+-cleanup {
+    eval $cleanupMytu
+    file delete cindex.ast
+} -body {
     mytu cursor
     mytu diagnostic number
     #mytu diagnostic decode 0
     #mytu diagnostic format 0
-    mytu isMultipleIncludeGuarded libcindex.c
-    mytu modificationTime libcindex.c
+    mytu isMultipleIncludeGuarded src/testdata/refman_index.c
+    mytu modificationTime src/testdata/refman_index.c
     mytu reparse
     mytu resourceUsage
     mytu save cindex.ast
     mytu sourceFile
-    mytu uniqueID libcindex.c
+    mytu uniqueID src/testdata/refman_index.c
     return
 }
 
@@ -235,6 +244,19 @@ test cindex_range-0.0 "range / alpha omega" \
     range start $myrange
     return
 }
+
+#-------------------------------------------- examples in the reference manual
+
+test refman_index-0.0 "index example #1" -body {
+    index -displayDiagnostics myindex
+    myindex translationUnit -- mytu src/testdata/refman_index.c
+    foreachChild child [mytu cursor] {
+        if {[lindex $child 0] eq "enumDecl"} {
+            puts "enumdecl at [location presumedLocation [cursor location]]"
+        }
+    }
+}
+
 
 # ----------------------------------------------------------------------------
 
