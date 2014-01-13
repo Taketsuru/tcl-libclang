@@ -34,21 +34,45 @@ namespace import cindex::*
 
 #------------------------------------------------------------------------ bist
 
-test cindex_bist-1.0 "bist" -body {
+test bist-1.0 "bist" -body {
     bist
 }
 
-# ---------------------------------------------------------------------- index
+#----------------------------------------------------------------------- index
 
-test cindex_index-1.0 "index / alpha omega" -body {
+test index-0.0 "index / alpha omega" -body {
     index myindex
-    myindex options -none
-    myindex options
     rename myindex {}
     return
 }
 
-test cindex_index-2.0 "index options / default value" -setup {
+test index-1.0 "index / simple options 1" -body {
+    catch {exec "tclsh$tcl_version" src/testdata/index-1.0.tcl} result
+    return $result
+} -result "src/testdata/error.c:1:9: error: expected ';' after top level declarator"
+
+test index-1.1 "index / simple options 2" -setup {
+    index myindex
+    myindex translationUnit -incomplete mytu src/testdata/index-1.1.h
+    mytu save src/testdata/index-1.1.h.pch
+} -body {
+    index -excludeDeclFromPCH myindex
+    myindex translationUnit mytu \
+        -include src/testdata/index-1.1.h src/testdata/index-1.1.c
+    foreachChild cursor [mytu cursor] {
+        if {[lindex $cursor 0] ne "VarDecl"} {
+            error "The first element of index-1.1.c isn't a VarDecl."
+        }
+        return
+    }
+} -cleanup {
+    file delete src/testdata/index-1.1.h.pch
+    rename myindex {}
+}
+
+#---------------------------------------------------------------- index options
+
+test index_options-1.0 "index options / default value" -setup {
     index myindex
 } -cleanup {
     rename myindex {}
@@ -56,7 +80,7 @@ test cindex_index-2.0 "index options / default value" -setup {
     myindex options
 } -result -none
 
-test cindex_index-3.0 \
+test index_options-2.0 \
     "index options / set simple option -backgroundIndexing" -setup {
     index myindex
 } -cleanup {
@@ -66,7 +90,7 @@ test cindex_index-3.0 \
     myindex options
 } -result -backgroundIndexing
 
-test cindex_index-3.1 \
+test index_options-2.1 \
     "index options / set simple option -backgroundEditing" -setup {
     index myindex
 } -cleanup {
@@ -76,7 +100,7 @@ test cindex_index-3.1 \
     myindex options
 } -result -backgroundEditing
 
-test cindex_index-4.0 "index options / set combined option" -setup {
+test index_options-3.0 "index options / set combined option" -setup {
     index myindex
 } -cleanup {
     rename myindex {}
@@ -85,7 +109,7 @@ test cindex_index-4.0 "index options / set combined option" -setup {
     myindex options
 } -result -background
 
-test cindex_index-5.0 "index options / set multiple options" -setup {
+test index_options-4.0 "index options / set multiple options" -setup {
     index myindex
 } -cleanup {
     rename myindex {}
@@ -94,7 +118,30 @@ test cindex_index-5.0 "index options / set multiple options" -setup {
     myindex options
 } -result -background
 
-# -------------------------------------------------- indexName translationUnit
+#--------------------------------------------------- indexName translationUnit
+
+test indexName_translationUnit-1.0 "indexName translationUnit / all options" \
+-setup {
+    index -displayDiagnostics myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex translationUnit \
+        -cacheCompletionResults \
+        -detailedPreprocessingRecord \
+        -forSerialization \
+        -includeBriefCommentsInCodeCompletion \
+        -incomplete \
+        -parseLater \
+        -precompiledPreamble \
+        -skipFunctionBodies \
+        -sourceFile src/testdata/indexName_translationUnit-1.0.c \
+        -unsavedFile src/testdata/indexName_translationUnit-1.0.h \
+        	"typedef int x;\n"\
+        -- mytu
+}
+
+#--------------------------------------------------------- translationUnitName
 
 set setupMytu {
     index myindex
@@ -102,7 +149,6 @@ set setupMytu {
 }
 
 set cleanupMytu {
-    rename mytu {}
     rename myindex {}
 }
 

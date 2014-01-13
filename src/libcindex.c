@@ -3871,7 +3871,7 @@ static const char *parseOptions[] = {
    "-unsavedFile",
 
    // flags
-   "-detailPreprocessingRecord",
+   "-detailedPreprocessingRecord",
    "-incomplete",
    "-precompiledPreamble",
    "-cacheCompletionResults",
