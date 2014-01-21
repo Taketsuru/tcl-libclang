@@ -27,7 +27,12 @@
       <para>
 	This command creates a command named
 	<replaceable>indexName</replaceable>.  The created command is used to
-	parse translation units.
+	parse translation units. See
+	<citerefentry>
+	  <refentrytitle>
+	    <replaceable>translationUnitName</replaceable> translationUnit
+	  </refentrytitle>
+	</citerefentry> .
       </para>
 
       <para>
@@ -68,7 +73,9 @@
 	  $ myindex translationUnit mytu -I /usr/local/include test.c
 	  $ cindex::foreachChild child [mytu cursor] {
 	      if {[lindex $child 0] eq "enumDecl"} {
-		puts "enumdecl at [cindex::location presumedLocation [cindex::cursor location]]"
+	        set location [cindex::cursor location]
+		set locString [cindex::location presumedLocation $location]
+		puts "enumdecl at $locString"
 	      }
             }
             enumdecl at 
@@ -371,8 +378,277 @@
 	</variablelist>
       </para>
     </refsection>
-    
   </refentry>
+
+  <refentry>
+    <refmeta>
+      <refentrytitle>
+	<replaceable>translationUnitName</replaceable> cursor
+      </refentrytitle>
+    </refmeta>
+
+    <refnamediv>
+      <refname><replaceable>translationUnitName</replaceable> cursor</refname>
+      <refpurpose>get a cursor pointing an AST node of a translation
+      unit</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+      <cmdsynopsis>
+	<command><replaceable>translationUnitName</replaceable> cursor</command>
+      </cmdsynopsis>
+      <cmdsynopsis>
+	<command><replaceable>translationUnitName</replaceable> cursor</command>
+	<arg choice='plain'>
+	  <option>-location</option> <replaceable>sourceLocation</replaceable>
+	</arg>
+      </cmdsynopsis>
+      <cmdsynopsis>
+	<command><replaceable>translationUnitName</replaceable> cursor</command>
+	<arg choice='plain'>
+	  <option>-file</option> <replaceable>filename</replaceable>
+	  <option>-line</option> <replaceable>line</replaceable>
+	  <option>-column</option> <replaceable>column</replaceable>
+	</arg>
+      </cmdsynopsis>
+      <cmdsynopsis>
+	<command><replaceable>translationUnitName</replaceable> cursor</command>
+	<arg choice='plain'>
+	  <option>-file</option> <replaceable>filename</replaceable>
+	  <option>-offset</option> <replaceable>offset</replaceable>
+	</arg>
+      </cmdsynopsis>
+    </refsynopsisdiv>
+
+    <refsection>
+      <title>Description</title>
+      <para>
+	If no arguments are given, the return value is a cursor pointing the
+	root node of <replaceable>translationUnitName</replaceable>.
+      </para>
+      <para>
+	Otherwise, the argument list specifies a location in
+	<replaceable>translationUnitName</replaceable>.  In this case, the
+	return value is a cursor pointing the most descendent AST node
+	spanning the specified location.  The argument list is one of the
+	following form:
+	<variablelist>
+	  <varlistentry>
+	    <term>
+	      <option>-location</option>
+	      <replaceable>sourceLocation</replaceable>
+	    </term>
+	    <listitem>
+	      <para>
+		The location is <replaceable>sourceLocation</replaceable>.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term>
+	      <option>-file</option>
+	      <replaceable>filename</replaceable>
+	      <option>-line</option>
+	      <replaceable>line</replaceable>
+	      <option>-column</option>
+	      <replaceable>column</replaceable>
+	    </term>
+	    <listitem>
+	      <para>
+		The location is at <replaceable>line</replaceable> and
+		<replaceable>column</replaceable> in
+		<replaceable>filename</replaceable>.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term>
+	      <option>-file</option>
+	      <replaceable>filename</replaceable>
+	      <option>-offset</option>
+	      <replaceable>offset</replaceable>
+	    </term>
+	    <listitem>
+	      <para>
+		The location is at <replaceable>offset</replaceable> in
+		<replaceable>filename</replaceable>.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	</variablelist>
+      </para>
+    </refsection>
+  </refentry>
+
+  <refentry>
+    <refmeta>
+      <refentrytitle>
+	<replaceable>translationUnitName</replaceable> location
+      </refentrytitle>
+    </refmeta>
+
+    <refnamediv>
+      <refname><replaceable>translationUnitName</replaceable> location</refname>
+      <refpurpose>get a location in a translation unit</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+      <cmdsynopsis>
+	<command>
+	  <replaceable>translationUnitName</replaceable> location
+	</command>
+	<arg choice='plain'>
+	  <option>-file</option> <replaceable>filename</replaceable>
+	  <option>-line</option> <replaceable>line</replaceable>
+	  <option>-column</option> <replaceable>column</replaceable>
+	</arg>
+      </cmdsynopsis>
+      <cmdsynopsis>
+	<command>
+	  <replaceable>translationUnitName</replaceable> location
+	</command>
+	<arg choice='plain'>
+	  <option>-file</option> <replaceable>filename</replaceable>
+	  <option>-offset</option> <replaceable>offset</replaceable>
+	</arg>
+      </cmdsynopsis>
+    </refsynopsisdiv>
+
+    <refsection>
+      <title>Description</title>
+      <para>
+	This command returns a location in
+	<replaceable>translationUnitName</replaceable>.  The location is
+	specified in one of the following ways:
+	<variablelist>
+	  <varlistentry>
+	    <term>
+	      <option>-file</option>
+	      <replaceable>filename</replaceable>
+	      <option>-line</option>
+	      <replaceable>line</replaceable>
+	      <option>-column</option>
+	      <replaceable>column</replaceable>
+	    </term>
+	    <listitem>
+	      <para>
+		The location is at <replaceable>line</replaceable> and
+		<replaceable>column</replaceable> in
+		<replaceable>filename</replaceable>.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	  <varlistentry>
+	    <term>
+	      <option>-file</option>
+	      <replaceable>filename</replaceable>
+	      <option>-offset</option>
+	      <replaceable>offset</replaceable>
+	    </term>
+	    <listitem>
+	      <para>
+		The location is at <replaceable>offset</replaceable> in
+		<replaceable>filename</replaceable>.
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	</variablelist>
+	The specified location must be a part of
+	<replaceable>translationUnitName</replaceable>.
+      </para>
+    </refsection>
+  </refentry>
+
+<refentry>
+    <refmeta>
+      <refentrytitle>
+	<replaceable>translationUnitName</replaceable> diagnostic decode
+      </refentrytitle>
+    </refmeta>
+
+    <refnamediv>
+      <refname>
+	<replaceable>translationUnitName</replaceable> diagnostic decode
+      </refname>
+      <refpurpose>get a human-readable diagnostic message</refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+      <cmdsynopsis>
+	<command><replaceable>translationUnitName</replaceable> diagnostic
+	decode</command>
+	<arg><replaceable>index</replaceable></arg>
+      </cmdsynopsis>
+    </refsynopsisdiv>
+
+    <refsection>
+      <title>Description</title>
+      <para>
+	This command returns a dictionary value that describes
+	<replaceable>index</replaceable>'th diagnostic in
+	<replaceable>translationUnitName</replaceable> (0 refers to the first
+	diagnostic).  If <replaceable>index</replaceable> is negative or
+	greater than or equal to the number of diagnostics in
+	<replaceable>translationUnitName</replaceable>, an error is signalled.
+      </para>
+
+      <para>
+	The returned dictionary value has the following keys:
+	<variablelist>
+	  <varlistentry>
+	    <term>severity</term>
+	    <listitem>
+	      <para>
+		
+	      </para>
+	    </listitem>
+	  </varlistentry>
+	</variablelist>
+      </para>
+    </refsection>
+
+    <refsection>
+      <title>Examples</title>
+      <para>
+	
+      </para>
+    </refsection>
+  </refentry>
+
+<refentry>
+    <refmeta>
+      <refentrytitle>
+
+      </refentrytitle>
+    </refmeta>
+
+    <refnamediv>
+      <refname></refname>
+      <refpurpose></refpurpose>
+    </refnamediv>
+
+    <refsynopsisdiv>
+      <cmdsynopsis>
+	<command></command>
+	<arg></arg>
+      </cmdsynopsis>
+    </refsynopsisdiv>
+
+    <refsection>
+      <title>Description</title>
+      <para>
+	
+      </para>
+    </refsection>
+
+    <refsection>
+      <title>Examples</title>
+      <para>
+	
+      </para>
+    </refsection>
+  </refentry>
+
 </article>
 
 <!--

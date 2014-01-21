@@ -70,7 +70,7 @@ test index-1.1 "index / simple options 2" -setup {
     rename myindex {}
 }
 
-#---------------------------------------------------------------- index options
+#--------------------------------------------------------------- index options
 
 test index_options-1.0 "index options / default value" -setup {
     index myindex
@@ -152,7 +152,7 @@ set cleanupMytu {
     rename myindex {}
 }
 
-test cindex_tu-0.0 "translation unit / alpha omega" \
+test translationUnitName-0.0 "translation unit / alpha omega" \
 -setup $setupMytu \
 -cleanup {
     eval $cleanupMytu
@@ -171,6 +171,16 @@ test cindex_tu-0.0 "translation unit / alpha omega" \
     mytu uniqueID src/testdata/refman_index.c
     return
 }
+
+#-------------------------------------------------- translationUnitName cursor
+
+test translationUnitNameCursor-1.0 "translationUnitName cursor / empty " \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    set root [mytu cursor]
+    return [lindex $root 0]
+} -result TranslationUnit
 
 # --------------------------------------------------------------------- cursor
 

@@ -3216,63 +3216,209 @@ static int tuCursorObjCmd(ClientData     clientData,
                           int            objc,
                           Tcl_Obj *const objv[])
 {
-   enum {
-      command_ix,
-      nargs
-   };
-
-   if (objc != nargs) {
-      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "");
-      return TCL_ERROR;
-   }
-
-   TUInfo            *info      = (TUInfo *)clientData;
-   CXTranslationUnit  tu        = info->translationUnit;
-   CXCursor           result    = clang_getTranslationUnitCursor(tu);
-   Tcl_Obj           *resultObj = newCursorObj(result);
-   Tcl_SetObjResult(interp, resultObj);
-
-   return TCL_OK;
-}
-
-//---------------------- translation unit instance's cursorForLocation command
-
-static int tuCursorForLocationObjCmd(ClientData     clientData,
-                                     Tcl_Interp    *interp,
-                                     int            objc,
-                                     Tcl_Obj *const objv[])
-{
-   enum {
-      command_ix,
-      location_ix,
-      nargs
-   };
-
-   if (objc != nargs) {
-      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "location");
-      return TCL_ERROR;
-   }
-
-   CXSourceLocation location;
-   int status = getLocationFromObj(interp, objv[location_ix], &location);
-   if (status != TCL_OK) {
-      return status;
-   }
-
    TUInfo *info = (TUInfo *)clientData;
 
-   CXCursor cursor = clang_getCursor(info->translationUnit, location);
+   enum {
+      command_ix,
+      optional_ix
+   };
+
+   static const char *options[] = {
+      "-location",
+      "-file",
+      "-line",
+      "-column",
+      "-offset",
+      NULL,
+   };
+
+   enum {
+      option_location,
+      option_file,
+      option_line,
+      option_column,
+      option_offset,
+   };
+
+   unsigned          options_found = 0;
+   CXSourceLocation  location      = clang_getNullLocation();
+   unsigned          line          = 0;
+   unsigned          column        = 0;
+   unsigned          offset        = 0;
+   CXFile            file          = NULL;
+
+   for (int i = optional_ix; i < objc; ++i) {
+      int optionNumber;
+      int status = Tcl_GetIndexFromObj(interp, objv[i], options,
+                                       "option", 0, &optionNumber);
+      if (status != TCL_OK) {
+         return status;
+      }
+
+      if ((options_found & (1 << optionNumber)) != 0) {
+         Tcl_SetObjResult(interp,
+                          Tcl_ObjPrintf("%s is specified more than once.",
+                                        Tcl_GetStringFromObj(objv[i], NULL)));
+         return TCL_ERROR;
+      }
+
+      switch (optionNumber) {
+
+      case option_location:
+         if (options_found != 0) {
+            goto invalid_form;
+         }
+
+         if (objc <= i + 1) {
+            Tcl_SetObjResult(interp,
+                             Tcl_NewStringObj("-location is not followed by a "
+                                              "source location",
+                                              -1));
+            return TCL_ERROR;
+         }
+
+         status = getLocationFromObj(interp, objv[i + 1], &location);
+         if (status != TCL_OK) {
+            return status;
+         }
+
+         break;
+
+      case option_file:
+         if ((options_found & (1 << option_location)) != 0) {
+            goto invalid_form;
+         }
+
+         if (objc <= i + 1) {
+            Tcl_SetObjResult(interp,
+                             Tcl_NewStringObj("-file is not followed by a "
+                                              "filename",
+                                              -1));
+            return TCL_ERROR;
+         }
+
+         const char *filename = Tcl_GetStringFromObj(objv[i + 1], NULL);
+         file = clang_getFile(info->translationUnit, filename);
+         if (file == NULL) {
+            goto invalid_location;
+         }
+
+         break;
+
+      case option_line:
+      case option_column:
+         if ((options_found & ((1 << option_location)
+                               | (1 << option_offset))) != 0) {
+            goto invalid_form;
+         }
+
+         if (objc <= i + 1) {
+            Tcl_SetObjResult(interp,
+                             Tcl_ObjPrintf("%s is not followed by a %s",
+                                           Tcl_GetStringFromObj(objv[i], NULL),
+                                           optionNumber == option_line
+                                           ? "line number"
+                                           : "column number"));
+            return TCL_ERROR;
+         }
+         
+         status = getUnsignedFromObj(interp, objv[i + 1],
+                                     optionNumber == option_line
+                                     ? &line
+                                     : &column);
+         if (status != TCL_OK) {
+            return status;
+         }
+
+         break;
+
+      case option_offset:
+         if ((options_found & ((1 << option_location)
+                               | (1 << option_line)
+                               | (1 << option_column))) != 0) {
+            goto invalid_form;
+         }
+
+         if (objc <= i + 1) {
+            Tcl_SetObjResult(interp,
+                             Tcl_NewStringObj("-offset is not "
+                                              "followed by an offset",
+                                              -1));
+            return TCL_ERROR;
+         }
+         
+         status = getUnsignedFromObj(interp, objv[i + 1], &offset);
+         if (status != TCL_OK) {
+            return status;
+         }
+
+         break;
+
+      default:
+         Tcl_Panic("unknown option number");
+
+      }
+
+      options_found |= 1 << optionNumber;
+   }
+
+   CXCursor cursor;
+   unsigned line_and_column_form = (1 << option_file)
+      | (1 << option_line)
+      | (1 << option_column);
+   unsigned offset_form = (1 << option_file) | (1 << option_offset);
+
+   if (options_found == 0) {
+
+      cursor = clang_getTranslationUnitCursor(info->translationUnit);
+
+   } else {
+
+      if ((options_found & line_and_column_form) == line_and_column_form) {
+
+         location = clang_getLocation(info->translationUnit,
+                                      file, line, column);
+
+      } else if ((options_found & offset_form) == offset_form) {
+
+         location = clang_getLocationForOffset(info->translationUnit,
+                                               file, offset);
+
+      } else {
+
+         goto invalid_form;
+
+      }
+
+      if (clang_equalLocations(location, clang_getNullLocation())) {
+         goto invalid_location;
+      }
+
+      cursor = clang_getCursor(info->translationUnit, location);
+
+   }
+
    if (clang_Cursor_isNull(cursor)) {
-      Tcl_SetObjResult
-         (interp,
-          Tcl_NewStringObj("no cursor at the specified location", -1));
-      return TCL_ERROR;
+      goto invalid_location;
    }
 
    Tcl_Obj *cursorObj = newCursorObj(cursor);
    Tcl_SetObjResult(interp, cursorObj);
 
    return TCL_OK;
+
+ invalid_form:
+   Tcl_SetObjResult(interp,
+                    Tcl_NewStringObj("the specified location is not valid.",
+                                     -1));
+   return TCL_ERROR;
+
+ invalid_location:
+   Tcl_SetObjResult(interp,
+                    Tcl_NewStringObj("the specified location is "
+                                     "not a part of the translation unit.",
+                                     -1));
+   return TCL_ERROR;
 }
 
 //----------------------------- translation unit instance's diagnostic command
@@ -3358,84 +3504,163 @@ static int tuLocationObjCmd(ClientData     clientData,
                             int            objc,
                             Tcl_Obj *const objv[])
 {
-   enum {
-      command_ix,
-      filename_ix,
-      line_ix,
-      column_ix,
-      numMandatoryArgs = column_ix
-   };
-
-   if (objc < numMandatoryArgs || column_ix + 1 < objc) {
-      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "filename line ?column?");
-      return TCL_ERROR;
-   }
-
    TUInfo *info = (TUInfo *)clientData;
 
-   CXFile file;
-   int status = getFileFromObj(interp, info->translationUnit,
-                               objv[filename_ix], &file);
-   if (status != TCL_OK) {
-      return status;
-   }
+   enum {
+      command_ix,
+      option_ix
+   };
 
-   unsigned values[2] = { 0 };
-   for (int i = 0; i < 2 && line_ix + i < objc; ++i) {
-      int status = getUnsignedFromObj(interp, objv[line_ix + i], &values[i]);
+   static const char *options[] = {
+      "-file",
+      "-line",
+      "-column",
+      "-offset",
+      NULL,
+   };
+
+   enum {
+      option_file,
+      option_line,
+      option_column,
+      option_offset,
+   };
+
+   unsigned options_found = 0;
+   unsigned line          = 0;
+   unsigned column        = 0;
+   unsigned offset        = 0;
+   CXFile   file          = NULL;
+
+   for (int i = option_ix; i < objc; ++i) {
+      int optionNumber;
+      int status = Tcl_GetIndexFromObj(interp, objv[i], options,
+                                       "option", 0, &optionNumber);
       if (status != TCL_OK) {
          return status;
       }
+
+      if ((options_found & (1 << optionNumber)) != 0) {
+         Tcl_SetObjResult(interp,
+                          Tcl_ObjPrintf("%s is specified more than once.",
+                                        Tcl_GetStringFromObj(objv[i], NULL)));
+         return TCL_ERROR;
+      }
+
+      switch (optionNumber) {
+
+      case option_file:
+         if (objc <= i + 1) {
+            Tcl_SetObjResult(interp,
+                             Tcl_NewStringObj("-file is not followed by a "
+                                              "filename",
+                                              -1));
+            return TCL_ERROR;
+         }
+
+         const char *filename = Tcl_GetStringFromObj(objv[i + 1], NULL);
+         file = clang_getFile(info->translationUnit, filename);
+         if (file == NULL) {
+            goto invalid_location;
+         }
+
+         break;
+
+      case option_line:
+      case option_column:
+         if ((options_found & (1 << option_offset)) != 0) {
+            goto invalid_form;
+         }
+
+         if (objc <= i + 1) {
+            const char *option = Tcl_GetStringFromObj(objv[i], NULL);
+            Tcl_SetObjResult(interp,
+                             Tcl_ObjPrintf("%s is not followed by a %s number",
+                                           option, option + 1));
+            return TCL_ERROR;
+         }
+
+         status = getUnsignedFromObj(interp, objv[i + 1],
+                                     optionNumber == option_line
+                                     ? &line
+                                     : &column);
+         if (status != TCL_OK) {
+            return status;
+         }
+
+         break;
+
+      case option_offset:
+         if ((options_found & ((1 << option_line) | (1 << option_column)))
+             != 0) {
+            goto invalid_form;
+         }
+
+         if (objc <= i + 1) {
+            Tcl_SetObjResult(interp,
+                             Tcl_NewStringObj("-offset is not "
+                                              "followed by an offset",
+                                              -1));
+            return TCL_ERROR;
+         }
+         
+         status = getUnsignedFromObj(interp, objv[i + 1], &offset);
+         if (status != TCL_OK) {
+            return status;
+         }
+
+         break;
+
+      default:
+         Tcl_Panic("unknown option number");
+
+      }
+
+      options_found |= 1 << optionNumber;
    }
 
-   CXSourceLocation  result    = clang_getLocation(info->translationUnit,
-                                                   file, values[0], values[1]);
-   Tcl_Obj          *resultObj = newLocationObj(result);
+   CXSourceLocation location;
+   unsigned line_and_column_form = (1 << option_file)
+      | (1 << option_line)
+      | (1 << option_column);
+   unsigned offset_form = (1 << option_file) | (1 << option_offset);
+   if ((options_found & line_and_column_form) == line_and_column_form) {
+
+      location = clang_getLocation(info->translationUnit,
+                                   file, line, column);
+
+   } else if ((options_found & offset_form) == offset_form) {
+
+      location = clang_getLocationForOffset(info->translationUnit,
+                                            file, offset);
+
+   } else {
+
+      goto invalid_form;
+
+   }
+
+   if (clang_equalLocations(location, clang_getNullLocation())) {
+      goto invalid_location;
+   }
+
+   Tcl_Obj *resultObj = newLocationObj(location);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
-}
 
-//---------------------- translation unit instance's locationForOffset command
+ invalid_form:
+   Tcl_SetObjResult(interp,
+                    Tcl_NewStringObj("the specified location is not valid.",
+                                     -1));
+   return TCL_ERROR;
 
-static int tuLocationForOffsetObjCmd(ClientData     clientData,
-                                     Tcl_Interp    *interp,
-                                     int            objc,
-                                     Tcl_Obj *const objv[])
-{
-   enum {
-      command_ix,
-      filename_ix,
-      offset_ix,
-      nargs
-   };
-
-   if (objc != nargs) {
-      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "filename offset");
-      return TCL_ERROR;
-   }
-
-   TUInfo *info = (TUInfo *)clientData;
-
-   CXFile file;
-   int status = getFileFromObj(interp, info->translationUnit,
-                               objv[filename_ix], &file);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   unsigned offset;
-   status = getUnsignedFromObj(interp, objv[offset_ix], &offset);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   CXSourceLocation result
-      = clang_getLocationForOffset(info->translationUnit, file, offset);
-   Tcl_Obj *resultObj = newLocationObj(result);
-   Tcl_SetObjResult(interp, resultObj);
-
-   return TCL_OK;
+ invalid_location:
+   Tcl_SetObjResult(interp,
+                    Tcl_NewStringObj("the specified location is "
+                                     "not a part of the translation unit.",
+                                     -1));
+   return TCL_ERROR;
 }
 
 //----------------------- translation unit instance's modificationTime command
@@ -3763,16 +3988,12 @@ static int tuInstanceObjCmd(ClientData     clientData,
    static Command subcommands[] = {
       { "cursor",
         tuCursorObjCmd },
-      { "cursorForLocation",
-        tuCursorForLocationObjCmd },
       { "diagnostic",
         tuDiagnosticObjCmd },
       { "isMultipleIncludeGuarded",
         tuIsMultipleIncludeGuardedObjCmd },
       { "location",
         tuLocationObjCmd },
-      { "locationForOffset",
-        tuLocationForOffsetObjCmd },
       { "modificationTime",
         tuModificationTimeObjCmd },
       { "reparse",
