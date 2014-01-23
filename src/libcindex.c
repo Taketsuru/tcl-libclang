@@ -4160,6 +4160,7 @@ static int indexTranslationUnitObjCmd(ClientData     clientData,
             return TCL_ERROR;
          }
          sourceFilename = Tcl_GetStringFromObj(objv[i], NULL);
+         ++i;
          break;
 
       case parseOptions_unsavedFile: // -unsavedFile filename contents
