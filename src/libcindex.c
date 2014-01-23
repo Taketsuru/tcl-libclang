@@ -4159,7 +4159,7 @@ static int indexTranslationUnitObjCmd(ClientData     clientData,
             Tcl_DecrRefCount(unsavedFileList);
             return TCL_ERROR;
          }
-         sourceFilename = Tcl_GetStringFromObj(objv[i], NULL);
+         sourceFilename = Tcl_GetStringFromObj(objv[i + 1], NULL);
          ++i;
          break;
 
