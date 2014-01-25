@@ -928,18 +928,18 @@ static TUInfo * lookupTranslationUnit(CXTranslationUnit tu)
 
 static EnumConsts diagnosticSeverityLabels = {
    .names = {
-      "Ignored",
-      "Note",
-      "Warning",
-      "Error",
-      "Fatal"
+      "ignored",
+      "note",
+      "warning",
+      "error",
+      "fatal"
    }
 };
 
 static Tcl_Obj *diagnosticSeverityTagObj;
 static Tcl_Obj *diagnosticLocationTagObj;
 static Tcl_Obj *diagnosticSpellingTagObj;
-static Tcl_Obj *diagnosticOptionTagObj;
+static Tcl_Obj *diagnosticEnableTagObj;
 static Tcl_Obj *diagnosticDisableTagObj;
 static Tcl_Obj *diagnosticCategoryTagObj;
 static Tcl_Obj *diagnosticRangesTagObj;
@@ -954,8 +954,8 @@ static Tcl_Obj *newDiagnosticObj(CXDiagnostic diagnostic)
       location_ix,
       spelling_tag_ix,
       spelling_ix,
-      option_tag_ix,
-      option_ix,
+      enable_tag_ix,
+      enable_ix,
       disable_tag_ix,
       disable_ix,
       category_tag_ix,
@@ -971,7 +971,7 @@ static Tcl_Obj *newDiagnosticObj(CXDiagnostic diagnostic)
    resultArray[severity_tag_ix] = diagnosticSeverityTagObj;
    resultArray[location_tag_ix] = diagnosticLocationTagObj;
    resultArray[spelling_tag_ix] = diagnosticSpellingTagObj;
-   resultArray[option_tag_ix]   = diagnosticOptionTagObj;
+   resultArray[enable_tag_ix]   = diagnosticEnableTagObj;
    resultArray[disable_tag_ix]  = diagnosticDisableTagObj;
    resultArray[category_tag_ix] = diagnosticCategoryTagObj;
    resultArray[ranges_tag_ix]   = diagnosticRangesTagObj;
@@ -990,7 +990,7 @@ static Tcl_Obj *newDiagnosticObj(CXDiagnostic diagnostic)
 
    CXString disable;
    CXString option         = clang_getDiagnosticOption(diagnostic, &disable);
-   resultArray[option_ix]  = moveCXStringToObj(option);
+   resultArray[enable_ix]  = moveCXStringToObj(option);
    resultArray[disable_ix] = moveCXStringToObj(disable);
 
    CXString category        = clang_getDiagnosticCategoryText(diagnostic);
@@ -1012,8 +1012,8 @@ static Tcl_Obj *newDiagnosticObj(CXDiagnostic diagnostic)
       CXString      fixitStr = clang_getDiagnosticFixIt(diagnostic, i, &range);
 
       Tcl_Obj *fixit[2];
-      fixit[0] = moveCXStringToObj(fixitStr);
-      fixit[1] = newRangeObj(range);
+      fixit[0] = newRangeObj(range);
+      fixit[1] = moveCXStringToObj(fixitStr);
 
       fixits[i] = Tcl_NewListObj(2, fixit);
    }
@@ -5025,9 +5025,9 @@ int Cindex_Init(Tcl_Interp *interp)
       = Tcl_NewStringObj("spelling", -1);
    Tcl_IncrRefCount(diagnosticSpellingTagObj);
 
-   diagnosticOptionTagObj
-      = Tcl_NewStringObj("option", -1);
-   Tcl_IncrRefCount(diagnosticOptionTagObj);
+   diagnosticEnableTagObj
+      = Tcl_NewStringObj("enable", -1);
+   Tcl_IncrRefCount(diagnosticEnableTagObj);
 
    diagnosticDisableTagObj
       = Tcl_NewStringObj("disable", -1);

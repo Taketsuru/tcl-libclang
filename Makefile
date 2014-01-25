@@ -35,7 +35,7 @@ CFLAGS		= -DBIST -Wall -g -fPIC \
 DOCBOOK_RNG	= ../docbook-5.0/rng/docbook.rng
 DOCBOOK_XSL	= ../docbook-xsl-ns-1.78.1
 
-default: libcindex.so refman.html obj/refman.manpages
+default: libcindex.so refman.html
 
 obj/libcindex.o: src/libcindex.c
 	mkdir -p obj
@@ -57,18 +57,9 @@ refman.html: obj/refman.valid
 		$(DOCBOOK_XSL)/html/docbook.xsl \
 		doc/en_US/refman.docbook
 
-obj/refman.manpages: obj/refman.valid
-	mkdir -p obj man/man1
-	rm -f obj/refman.manpages
-	$(XSLTPROC) -o man/man1/libcindex.1 \
-		$(DOCBOOK_XSL)/manpages/docbook.xsl \
-		doc/en_US/refman.docbook
-	touch obj/refman.manpages
-
 clean:
 	rm -f libcindex.so refman.html
 	rm -rf obj man
 
-test:
+test:	libcindex.so
 	TCLLIBPATH=. $(TCLSH) src/cindex.test
-
