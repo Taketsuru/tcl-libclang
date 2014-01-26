@@ -931,49 +931,41 @@
 	</para>
       </refsection>
 
-      <refsection>
-	<title>Examples</title>
-	<para>
-	  
-	</para>
-      </refsection>
     </refentry>
 
-    <refentry>
+
+    <refentry xml:id='ref.translationUnitName.diagnostic.number>
       <refmeta>
 	<refentrytitle>
-
+	  translationUnitName diagnostic number
 	</refentrytitle>
       </refmeta>
 
       <refnamediv>
-	<refname></refname>
-	<refpurpose></refpurpose>
+	<refname>translationUnitName diagnostic number</refname>
+	<refpurpose>get the number of diagnostics in a translation unit</refpurpose>
       </refnamediv>
 
       <refsynopsisdiv>
 	<cmdsynopsis>
-	  <command></command>
-	  <arg></arg>
+	  <command><replaceable>translationUnitName</replaceable>
+	  diagnostic number</command>
 	</cmdsynopsis>
       </refsynopsisdiv>
 
       <refsection>
 	<title>Description</title>
 	<para>
-	  
+	  <command><replaceable>translationUnitName</replaceable> diagnostic
+	  number</command> returns the number of diagnostics in
+	  <replaceable>translationUnitName</replaceable>.
 	</para>
       </refsection>
 
-      <refsection>
-	<title>Examples</title>
-	<para>
-	  
-	</para>
-      </refsection>
     </refentry>
 
-  </reference>
+
+</reference>
 </book>
 
 <!--
