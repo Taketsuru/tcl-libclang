@@ -27,7 +27,7 @@
 # ============================================================================
 
 default:
-	(cd ../..; $(MAKE) $(MAKEFLAGS) refman.html obj/refman.manpages)
+	(cd ../..; $(MAKE) $(MAKEFLAGS) refman.html)
 
 %:
 	(cd ../..; $(MAKE) $(MAKEFLAGS) $@)
