@@ -691,8 +691,8 @@
 	      <term><literal>category</literal></term>
 	      <listitem>
 		<para>
-		  The category of this diagnostic.  The list of possible values
-		  can be obtained by '<userinput>clang
+		  The category name of this diagnostic.  The list of possible
+		  values can be obtained by '<userinput>clang
 		  --print-diagnostic-categories</userinput>'.
 		</para>
 	      </listitem>
@@ -725,6 +725,170 @@
 		      replaced.</para>
 		    </listitem>
 		  </itemizedlist>
+		</para>
+	      </listitem>
+	    </varlistentry>
+	  </variablelist>
+	</para>
+      </refsection>
+
+    </refentry>
+
+    <refentry xml:id='ref.translationUnitName.diagnostic.format'>
+      <refmeta>
+	<refentrytitle>
+	  translationUnitName diagnostic format
+	</refentrytitle>
+      </refmeta>
+
+      <refnamediv>
+	<refname><replaceable>translationUnitName</replaceable>
+	diagnostic format</refname>
+	<refpurpose>get a human-readable representation of a diagnostic</refpurpose>
+      </refnamediv>
+
+      <refsynopsisdiv>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable>
+	  diagnostic format</command>
+	  <arg choice='plain'><replaceable>index</replaceable></arg>
+	</cmdsynopsis>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable>
+	  diagnostic format</command>
+	  <arg choice='plain'><option>-none</option></arg>
+	  <arg choice='plain'><replaceable>index</replaceable></arg>
+	</cmdsynopsis>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable>
+	  diagnostic format</command>
+	  <arg><option>-displaySourceLocation</option></arg>
+	  <arg><option>-displayColumn</option></arg>
+	  <arg><option>-displaySourceRanges</option></arg>
+	  <arg><option>-displayOption</option></arg>
+	  <arg><option>-displayCategoryId</option></arg>
+	  <arg><option>-displayCategoryName</option></arg>
+	  <arg choice='plain'><replaceable>index</replaceable></arg>
+	</cmdsynopsis>
+      </refsynopsisdiv>
+
+      <refsection>
+	<title>Description</title>
+	<para>
+	  <command><replaceable>translationUnitName</replaceable> diagnostic
+	  format</command> formats <replaceable>index</replaceable>-th
+	  diagnostic of <replaceable>translationUnitName</replaceable> in a
+	  manner that suitable for display.  <replaceable>index</replaceable>
+	  of 0 formats the first diagnostic.
+	</para>
+	<para>
+	  The optional argument list has three forms:
+	  <variablelist>
+	    <varlistentry>
+	      <term>empty</term>
+	      <listitem>
+		<para>
+		  The command formats a diagnostic in a manner that closely
+		  mimics the behavior of clang compiler.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-none</option></term>
+	      <listitem>
+		<para>
+		  The command formats a diagnostic without the effects of any
+		  options.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><replaceable>option</replaceable>...</term>
+	      <listitem>
+		<para>
+		  The following options are available:
+		  <variablelist>
+		    <varlistentry>
+		      <term><option>-displaySourceLocation</option></term>
+		      <listitem>
+			<para>
+			  Display the location of the diagnostic.  The
+			  formatted string will be prefixed by the file name,
+			  the line number to which the diagnostic refers.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fshow-source-location</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><option>-displayColumn</option></term>
+		      <listitem>
+			<para>
+			  Display the column number to which the diagnostic
+			  refers.  This option implies
+			  <option>-displaySourceLocation</option>.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fshow-column</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><option>-displaySourceRanges</option></term>
+		      <listitem>
+			<para>
+			  Display the machine-parsable source range to which
+			  diagnostic refers.  This option implies
+			  <option>-displaySourceLocation</option>.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fdiagnostics-print-source-range-info</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><option>-displayOption</option></term>
+		      <listitem>
+			<para>
+			  Display the option associated with this diagnostic.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fdiagnostics-show-option</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><option>-displayCategoryId</option></term>
+		      <listitem>
+			<para>
+			  Display the category ID associated with the
+			  diagnostic.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fdiagnostics-show-category=id</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><option>-displayCategoryName</option></term>
+		      <listitem>
+			<para>
+			  Display the category name associated with the
+			  diagnostic.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fdiagnostics-show-category=name</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		  </variablelist>
 		</para>
 	      </listitem>
 	    </varlistentry>

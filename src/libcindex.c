@@ -3164,6 +3164,11 @@ static int tuDiagnosticFormatObjCmd(ClientData     clientData,
             ? 1 << optionNumber
             : diagnosticFormatOptions[optionNumber].mask;
       }
+
+      if ((flags & CXDiagnostic_DisplayColumn) != 0
+          || (flags & CXDiagnostic_DisplaySourceRanges) != 0) {
+         flags |= CXDiagnostic_DisplaySourceLocation;
+      }
    }
 
    unsigned numDiags = clang_getNumDiagnostics(info->translationUnit);
