@@ -934,7 +934,7 @@
     </refentry>
 
 
-    <refentry xml:id='ref.translationUnitName.diagnostic.number>
+    <refentry xml:id='ref.translationUnitName.diagnostic.number'>
       <refmeta>
 	<refentrytitle>
 	  translationUnitName diagnostic number
@@ -963,6 +963,69 @@
       </refsection>
 
     </refentry>
+
+<refentry xml:id='ref.translationUnitName.isMultipleIncludeGuarded'>
+  <refmeta>
+    <refentrytitle>
+      translationUnitName isMultipleIncludeGuarded
+    </refentrytitle>
+  </refmeta>
+
+  <refnamediv>
+    <refname>translationUnitName isMultipleIncludeGuarded</refname>
+    <refpurpose>determines whether a header has a multiple include guard</refpurpose>
+  </refnamediv>
+
+  <refsynopsisdiv>
+    <cmdsynopsis>
+      <command><replaceable>translationUnitName</replaceable>
+      isMultipleIncludeGuarded</command>
+      <arg choice='plain'><replaceable>filename</replaceable></arg>
+    </cmdsynopsis>
+  </refsynopsisdiv>
+
+  <refsection>
+    <title>Description</title>
+    <para>
+      <command><replaceable>translationUnitName</replaceable>
+      isMultipleIncludeGuarded</command> returns an empty string,
+      <literal>0</literal>, or <literal>1</literal> as follows:
+      <variablelist>
+	<varlistentry>
+	  <term><replaceable>filename</replaceable> is not a part of
+	  <replaceable>translationUnitName</replaceable>.</term>
+	  <listitem>
+	    <para>empty string</para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term><replaceable>filename</replaceable> is a part of
+	  <replaceable>translationUnitName</replaceable> and is not guarded
+	  against multiple inclusions.</term>
+	  <listitem>
+	    <para>0</para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term><replaceable>filename</replaceable> is a part of
+	  <replaceable>translationUnitName</replaceable> and is not guarded
+	  against multiple inclusions.</term>
+	  <listitem>
+	    <para>1</para>
+	  </listitem>
+	</varlistentry>
+      </variablelist>
+    </para>
+  </refsection>
+
+  <refsection>
+    <title>Examples</title>
+    <para>
+      
+    </para>
+  </refsection>
+</refentry>
+
 
 
 </reference>
