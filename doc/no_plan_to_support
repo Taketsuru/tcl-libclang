@@ -1,0 +1,21 @@
+/**
+ * \defgroup CINDEX_DEBUG Debugging facilities
+ *
+ * These routines are used for testing and debugging, only, and should not
+ * be relied upon.
+ *
+ * @{
+ */
+
+/* for debug/testing */
+CINDEX_LINKAGE CXString clang_getCursorKindSpelling(enum CXCursorKind Kind);
+CINDEX_LINKAGE void clang_getDefinitionSpellingAndExtent(CXCursor,
+                                          const char **startBuf,
+                                          const char **endBuf,
+                                          unsigned *startLine,
+                                          unsigned *startColumn,
+                                          unsigned *endLine,
+                                          unsigned *endColumn);
+CINDEX_LINKAGE void clang_enableStackTraces(void);
+CINDEX_LINKAGE void clang_executeOnThread(void (*fn)(void*), void *user_data,
+                                          unsigned stack_size);
