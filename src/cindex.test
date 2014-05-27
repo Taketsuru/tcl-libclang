@@ -38,20 +38,106 @@ test bist-1.0 "bist" -body {
     bist
 }
 
+#---------------------------------------------------------------------- cursor
+
+test cindex_cursor-0.0 "cursor / all subcommands" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set root [mytu cursor]
+    cursor argument $root 0
+    cursor availability $root
+    cursor briefCommentText $root
+    cursor canonicalCursor $root
+    cursor commentRange $root
+    cursor cxxAccessSpecifier $root
+    cursor definition $root
+    cursor displayName $root
+    cursor equal $root $root
+    cursor extent $root
+    cursor hash $root
+    cursor IBOutletCollectionType $root
+    cursor is attribute $root
+    cursor is bitField $root
+    cursor is cxxMethodPureVirtual $root
+    cursor is cxxMethodStatic $root
+    cursor is cxxMethodVirtual $root
+    cursor is declaration $root
+    cursor is definition $root
+    cursor is dynamicCall $root
+    cursor is unexposed $root
+    cursor is expression $root
+    cursor is invalid $root
+    cursor is null $root
+    cursor is objCOptional $root
+    cursor is preprocessing $root
+    cursor is reference $root
+    cursor is statement $root
+    cursor is translationUnit $root
+    cursor is variadic $root
+    cursor is virtualBase $root
+    cursor includedFile $root
+    cursor language $root
+    cursor lexicalParent $root
+    cursor linkage $root
+    cursor location $root
+    cursor null
+    cursor numArguments $root
+    cursor numOverloadedDecls $root
+    cursor objcDeclQualifiers $root
+    cursor objcPropertyAttributes $root
+    cursor objcSelectorIndex $root
+    cursor objcTypeEncoding $root
+    cursor overloadedDecls $root
+    cursor overriddenCursors $root
+    cursor platformAvailability $root
+    cursor rawCommentText $root
+    cursor receiverType $root
+    cursor referenced $root
+    cursor referenceNameRange $root
+    cursor resultType $root
+    cursor semanticParent $root
+    cursor specializedTemplate $root
+    cursor spelling $root
+    cursor spellingNameRange $root
+    cursor translationUnit $root
+    cursor templateCursorKind $root
+    cursor type $root
+    cursor typedefDeclUnderlyingType $root
+    cursor USR $root
+    foreachChild child $root {
+        switch -- [lindex $child 0] {
+            EnumDecl {
+                cursor enumDeclIntegerType $child
+                recurse
+            } EnumConstantDecl {
+                cursor enumConstantDeclValue $child
+            } StructDecl {
+                recurse
+            } FieldDecl {
+                cursor fieldDeclBitWidth $child
+            }
+        }
+    }
+    return
+}
+
+#---------------------------------------------------------------- foreachChild
+
 #----------------------------------------------------------------------- index
 
-test index-0.0 "index / alpha omega" -body {
+test index-0.0 "index / construction & destruction" -body {
     index myindex
     rename myindex {}
     return
 }
 
-test index-1.0 "index / simple options 1" -body {
+test index-1.0 "index / -displayDiagnostics" -body {
     catch {exec "tclsh$tcl_version" src/testdata/index-1.0.tcl} result
     return $result
 } -result "src/testdata/error.c:1:9: error: expected ';' after top level declarator"
 
-test index-1.1 "index / simple options 2" -setup {
+test index-1.1 "index / -excludeDeclFromPCH" -setup {
     index myindex
     myindex translationUnit -incomplete mytu src/testdata/index-1.1.h
     mytu save src/testdata/index-1.1.h.pch
@@ -70,204 +156,9 @@ test index-1.1 "index / simple options 2" -setup {
     rename myindex {}
 }
 
-#--------------------------------------------------------------- index options
+#-------------------------------------------------------------------- location
 
-test index_options-1.0 "index options / default value" -setup {
-    index myindex
-} -cleanup {
-    rename myindex {}
-} -body {
-    myindex options
-} -result -none
-
-test index_options-2.0 \
-    "index options / set simple option -backgroundIndexing" -setup {
-    index myindex
-} -cleanup {
-    rename myindex {}
-} -body {
-    myindex options -backgroundIndexing
-    myindex options
-} -result -backgroundIndexing
-
-test index_options-2.1 \
-    "index options / set simple option -backgroundEditing" -setup {
-    index myindex
-} -cleanup {
-    rename myindex {}
-} -body {
-    myindex options -backgroundEditing
-    myindex options
-} -result -backgroundEditing
-
-test index_options-3.0 "index options / set combined option" -setup {
-    index myindex
-} -cleanup {
-    rename myindex {}
-} -body {
-    myindex options -background
-    myindex options
-} -result -background
-
-test index_options-4.0 "index options / set multiple options" -setup {
-    index myindex
-} -cleanup {
-    rename myindex {}
-} -body {
-    myindex options -backgroundIndexing -backgroundEditing
-    myindex options
-} -result -background
-
-#--------------------------------------------------- indexName translationUnit
-
-test indexName_translationUnit-1.0 "indexName translationUnit / all options" \
--setup {
-    index -displayDiagnostics myindex
-} -cleanup {
-    rename myindex {}
-} -body {
-    myindex translationUnit \
-        -cacheCompletionResults \
-        -detailedPreprocessingRecord \
-        -forSerialization \
-        -includeBriefCommentsInCodeCompletion \
-        -incomplete \
-        -parseLater \
-        -precompiledPreamble \
-        -skipFunctionBodies \
-        -sourceFile src/testdata/indexName_translationUnit-1.0.c \
-        -unsavedFile src/testdata/indexName_translationUnit-1.0.h \
-        	"typedef int x;\n"\
-        -- mytu
-}
-
-#--------------------------------------------------------- translationUnitName
-
-set setupMytu {
-    index myindex
-    myindex translationUnit -- mytu src/testdata/refman_index.c
-}
-
-set cleanupMytu {
-    rename myindex {}
-}
-
-test translationUnitName-0.0 "translation unit / alpha omega" \
--setup $setupMytu \
--cleanup {
-    eval $cleanupMytu
-    file delete cindex.ast
-} -body {
-    mytu cursor
-    mytu diagnostic number
-    #mytu diagnostic decode 0
-    #mytu diagnostic format 0
-    mytu isMultipleIncludeGuarded src/testdata/refman_index.c
-    mytu modificationTime src/testdata/refman_index.c
-    mytu reparse
-    mytu resourceUsage
-    mytu save cindex.ast
-    mytu sourceFile
-    mytu uniqueID src/testdata/refman_index.c
-    return
-}
-
-#-------------------------------------------------- translationUnitName cursor
-
-test translationUnitNameCursor-1.0 "translationUnitName cursor / empty " \
--setup $setupMytu \
--cleanup $cleanupMytu \
--body {
-    set root [mytu cursor]
-    return [lindex $root 0]
-} -result TranslationUnit
-
-# --------------------------------------------------------------------- cursor
-
-test cindex_cursor-0.0 "cursor / alpha omega" \
-    -setup $setupMytu \
-    -cleanup $cleanupMytu \
--body {
-    set root [mytu cursor]
-    cursor equal $root $root
-    cursor hash $root
-    cursor linkage $root
-    cursor availability $root
-    cursor language $root
-    cursor translationUnit $root
-    cursor semanticParent $root
-    cursor lexicalParent $root
-    cursor overriddenCursors $root
-    cursor includedFile $root
-    cursor location $root
-    cursor extent $root
-    cursor is declaration $root
-    cursor is reference $root
-    cursor is expression $root
-    cursor is statement $root
-    cursor is attribute $root
-    cursor is invalid $root
-    cursor is translationUnit $root
-    cursor is preprocessing $root
-    cursor is unexposed $root
-    cursor type $root
-    cursor typedefDeclUnderlyingType $root
-    cursor numArguments $root
-    cursor argument $root 0
-    cursor objCTypeEncoding $root
-    cursor resultType $root
-    foreachChild child $root {
-        switch -- [lindex $child 0] {
-            EnumDecl {
-                cursor enumDeclIntegerType $child
-                recurse
-            } EnumConstantDecl {
-                cursor enumConstantDeclValue $child
-            } StructDecl {
-                recurse
-            } FieldDecl {
-                cursor fieldDeclBitWidth $child
-            }
-        }
-    }
-    return
-}
-
-# ----------------------------------------------------------------------- type
-
-test cindex_type-0.0 "type / alpha omega" \
--setup $setupMytu \
--cleanup $setupMytu \
--body {
-    set mytype [cursor type [mytu cursor]]
-    type spelling $mytype
-    type equal $mytype $mytype
-    type canonicalType $mytype
-    type pointeeType $mytype
-    type resultType $mytype
-    type elementType $mytype
-    type arrayElementType $mytype
-    type classType $mytype
-    type numElements $mytype
-    type arraySize $mytype
-    type alignof $mytype
-    type sizeof $mytype
-    type is constQualified $mytype
-    type is volatileQualified $mytype
-    type is restrictQualified $mytype
-    type is PODType $mytype
-    type is functionTypeVariadic $mytype
-    type declaration $mytype
-    type functionTypeCallingConvention $mytype
-    type numArgTypes $mytype
-    type argType $mytype 0
-    type offsetof $mytype test
-    return
-}
-
-# ------------------------------------------------------------------- location 
-
-test cindex_location-0.0 "location / alpha omega" \
+test cindex_location-0.0 "location / all subcommands" \
 -setup $setupMytu \
 -cleanup $setupMytu \
 -body {
@@ -286,7 +177,7 @@ test cindex_location-0.0 "location / alpha omega" \
 
 # ---------------------------------------------------------------------- range
 
-test cindex_range-0.0 "range / alpha omega" \
+test cindex_range-0.0 "range / all subcommands" \
 -setup $setupMytu \
 -cleanup $setupMytu \
 -body {
@@ -301,20 +192,155 @@ test cindex_range-0.0 "range / alpha omega" \
     return
 }
 
-#-------------------------------------------- examples in the reference manual
+#--------------------------------------------------------------------- recurse
 
-test refman_index-0.0 "index example #1" -body {
-    index -displayDiagnostics myindex
-    myindex translationUnit -- mytu src/testdata/refman_index.c
-    foreachChild child [mytu cursor] {
-        if {[lindex $child 0] eq "enumDecl"} {
-            puts "enumdecl at [location presumedLocation [cursor location]]"
-        }
-    }
+# ----------------------------------------------------------------------- type
+
+test cindex_type-0.0 "type / all subcommands" \
+-setup $setupMytu \
+-cleanup $setupMytu \
+-body {
+    set mytype [cursor type [mytu cursor]]
+    type alignof $mytype
+    type argType $mytype 0
+    type arrayElementType $mytype
+    type arraySize $mytype
+    type canonicalType $mytype
+    type classType $mytype
+    type cxxRefQualifier $mytype
+    type declaration $mytype
+    type elementType $mytype
+    type equal $mytype $mytype
+    type functionTypeCallingConvention $mytype
+    type is constQualified $mytype
+    type is functionTypeVariadic $mytype
+    type is PODType $mytype
+    type is restrictQualified $mytype
+    type is volatileQualified $mytype
+    type numArgTypes $mytype
+    type numElements $mytype
+    type offsetof $mytype test
+    type pointeeType $mytype
+    type resultType $mytype
+    type sizeof $mytype
+    type spelling $mytype
+    return
 }
 
+#---------------------------------------------------- <index instance> options
 
-# ----------------------------------------------------------------------------
+test indexName_options-1.0 "<index instance> options / default" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options
+} -result -none
+
+test indexName_options-2.0 \
+    "<index instance> options / -backgroundIndexing" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options -backgroundIndexing
+    myindex options
+} -result -backgroundIndexing
+
+test indexName_options-2.1 \
+    "<index instance> options / -backgroundEditing" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options -backgroundEditing
+    myindex options
+} -result -backgroundEditing
+
+test indexName_options-3.0 "<index instance> options / -background" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options -background
+    myindex options
+} -result -background
+
+test indexName_options-4.0 "<index instance> options / multiple" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options -backgroundIndexing -backgroundEditing
+    myindex options
+} -result -background
+
+#-------------------------------------------- <index instance> translationUnit
+
+test indexName_translationUnit-1.0 "indexName translationUnit / all options" \
+-setup {
+    index -displayDiagnostics myindex
+} -cleanup {
+    rename myindex {} # this destruct both index & translation unit instances
+} -body {
+    myindex translationUnit \
+        -cacheCompletionResults \
+        -detailedPreprocessingRecord \
+        -forSerialization \
+        -includeBriefCommentsInCodeCompletion \
+        -incomplete \
+        -parseLater \
+        -precompiledPreamble \
+        -skipFunctionBodies \
+        -sourceFile src/testdata/indexName_translationUnit-1.0.c \
+        -unsavedFile src/testdata/indexName_translationUnit-1.0.h \
+        	"typedef int x;\n"\
+        -- mytu
+}
+
+#------------------------------------------------- <translation unit instance>
+
+set setupMytu {
+    index myindex
+    myindex translationUnit -- mytu src/testdata/refman_index.c
+}
+
+set cleanupMytu {
+    rename myindex {}
+}
+
+#------------------------------------------ <translation unit instance> cursor
+
+test translationUnitNameCursor-1.0 \
+    "<translation unit instance> cursor" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    set root [mytu cursor]
+    return [lindex $root 0]
+} -result TranslationUnit
+
+#-------------------------------------- <translation unit instance> diagnostic
+
+#-------------------------------------- <translation unit instance> diagnostic
+
+#------------------------ <translation unit instance> isMultipleIncludeGuarded
+
+#---------------------------------------- <translation unit instance> location
+
+#-------------------------------- <translation unit instance> modificationTime
+
+#----------------------------------------- <translation unit instance> reparse
+
+#----------------------------------- <translation unit instance> resourceUsage
+
+#-------------------------------------------- <translation unit instance> save
+
+#-------------------------------------- <translation unit instance> sourceFile
+
+#---------------------------------------- <translation unit instance> uniqueID
+
+#=============================================================================
 
 cleanupTests
 

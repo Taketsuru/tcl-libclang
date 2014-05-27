@@ -6,7 +6,8 @@ Tcl language binding of libclang (work in progress)
 Build Procedure
 ===============
 
-This library needs the following programs.  Install them first.
+To build this library, the followings programs are necessary.  Install
+them first.
 
 - aspell
 - fop
@@ -14,6 +15,8 @@ This library needs the following programs.  Install them first.
 - tclsh8.6
 - xmllint
 - xsltproc
+- DocBook 5.0
+- DocBook 5.0 style sheet
 
 Makefile in the same directory as README.md has the following variable
 definitions just after the header comment block.  Change them if it's

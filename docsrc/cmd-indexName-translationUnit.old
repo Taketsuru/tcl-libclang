@@ -1,0 +1,124 @@
+      <refsynopsisdiv>
+	<cmdsynopsis>
+	  <command><replaceable>indexName</replaceable>
+	  translationUnit</command>
+	  <arg><option>-cacheCompletionResults</option></arg>
+	  <arg><option>-detailedPreprocessingRecord</option></arg>
+	  <arg><option>-forSerialization</option></arg>
+	  <arg><option>-includeBriefCommentsInCodeCompletion</option></arg>
+	  <arg><option>-incomplete</option></arg>
+	  <arg><option>-parseLater</option></arg>
+	  <arg><option>-precompiledPreamble</option></arg>
+	  <arg><option>-skipFunctionBodies</option></arg>
+	  <arg>
+	    <option>-sourceFile</option>
+	    <replaceable>filename</replaceable>
+	  </arg>
+	  <arg>
+	    <option>-unsaveFile</option>
+	    <replaceable>filename</replaceable>
+	    <replaceable>contents</replaceable>
+	  </arg>
+	  <arg><option>--</option></arg>
+	  <arg choice='plain'>
+	  <replaceable>translationUnitName</replaceable></arg>
+	  <arg choice='plain' rep='repeat'>
+	    <replaceable>compilerCommnadLineArg</replaceable>
+	  </arg>
+	</cmdsynopsis>
+      </refsynopsisdiv>
+
+      <refsection>
+
+	<para>
+	  The main source file of the translation unit is specified in one of
+	  two ways:
+	  <itemizedlist>
+	    <listitem>
+	      <para>
+		By <option>-sourceFile</option>.  The file name of the main
+		source file follows the option.
+	      </para>
+	    </listitem>
+	    <listitem>
+	      <para>By a <replaceable>commandLineArg</replaceable>.  The file
+	      name of the main source file is specified in the same way as
+	      compiler's command line.</para>
+	    </listitem>
+	  </itemizedlist>
+	</para>
+
+	<para>
+	  The following options are available:
+	  <variablelist>
+	    <varlistentry>
+	      <term><option>-cacheCompletionResults</option></term>
+	      <listitem>
+		<para>
+		  Cache code completion results.  This option adds some
+		  overheads to reparse operation but enhances the performance of
+		  code completion.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-detailedPreprocessingRecord</option></term>
+	      <listitem>
+		<para>
+		  Record macro definitions and instantiations.  This enables
+		  querying such properties.  This option increases memory
+		  footprint and time necessary to parse the translation unit.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-forSerialization</option></term>
+	      <listitem>
+		<para>
+		  Prepare to do <replaceable>translationUnitName</replaceable>
+		  <command>save</command>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-includeBriefCommentsInCodeCompletion</option></term>
+	      <listitem>
+		<para>
+		  Include brief documentations in comments into the set of code
+		  completions.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-incomplete</option></term>
+	      <listitem>
+		<para>
+		  Suppress semantic analysis performed at the end of translation
+		  unit.  This is useful when parsing a header file to generate
+		  precompiled header.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-parseLater</option></term>
+	      <listitem>
+		<para>
+		  Don't parse the translation unit.  To parse the created
+		  translation unit, do
+		  <replaceable>translationUnitName</replaceable>
+		  <command>reparse</command>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-precompiledPreamble</option></term>
+	      <listitem>
+		<para>
+		  
+		</para>
+	      </listitem>
+	    </varlistentry>
+	  </variablelist>
+	</para>
+      </refsection>
+    </refentry>

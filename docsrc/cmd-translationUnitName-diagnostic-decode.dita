@@ -1,0 +1,207 @@
+<?xml version='1.0'?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "reference.dtd">
+
+<!--
+==============================================================================
+ Copyright (c) 2014 Taketsuru <taketsuru11@gmail.com>.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice,
+ this list of conditions and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
+ and/or other materials provided with the distribution.
+
+ THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND ANY
+ EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY
+ DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+==============================================================================
+-->
+
+<reference id='ref.index'>
+  <title>index</title>
+  <shortdesc>create a context for parsing translation units</shortdesc>
+  <refbody>
+<!--
+<refentry>
+      <refmeta>
+	<refentrytitle>translationUnitName diagnostic decode</refentrytitle>
+	<manvolnum>1</manvolnum>
+      </refmeta>
+
+      <refnamediv>
+	<refname>
+	  <replaceable>translationUnitName</replaceable> diagnostic decode
+	</refname>
+	<refpurpose>get a key-value list describing a diagnostic</refpurpose>
+      </refnamediv>
+
+      <refsynopsisdiv>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable> diagnostic
+	  decode</command>
+	  <arg><replaceable>index</replaceable></arg>
+	</cmdsynopsis>
+      </refsynopsisdiv>
+
+      <refsection>
+	<title>Description</title>
+	<para>
+	  This command returns a dictionary value that describes
+	  <replaceable>index</replaceable>'th diagnostic in
+	  <replaceable>translationUnitName</replaceable> (0 refers to the first
+	  diagnostic).  If <replaceable>index</replaceable> is negative or
+	  greater than or equal to the number of diagnostics in
+	  <replaceable>translationUnitName</replaceable>, an error is signalled.
+	</para>
+
+	<para>
+	  The returned dictionary value has the following key-value pairs:
+	  <variablelist>
+	    <varlistentry>
+	      <term><literal>severity</literal></term>
+	      <listitem>
+		<para>
+		  The severity of the diagnostic.  The value is one of the
+		  following:
+		  <variablelist>
+		    <varlistentry>
+		      <term><literal>ignored</literal></term>
+		      <listitem>
+			<para>
+			  This diagnostic is suppressed.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><literal>note</literal></term>
+		      <listitem>
+			<para>
+			  This diagnostic is a supplementary to the previous
+			  non-note diagnostic.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><literal>warning</literal></term>
+		      <listitem>
+			<para>
+			  This diagnostic indicates that the code is suspicious.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><literal>error</literal></term>
+		      <listitem>
+			<para>
+			  This diagnostic indicates that the code is wrong.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><literal>fatal</literal></term>
+		      <listitem>
+			<para>
+			  This diagnostic indicates that the code is wrong and
+			  libclang can not recover from the error.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		  </variablelist>
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>location</literal></term>
+	      <listitem>
+		<para>
+		  The source location of the diagnostic.  See <citerefentry>
+		  <refentrytitle>location</refentrytitle>
+		  <manvolnum>1</manvolnum></citerefentry>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>spelling</literal></term>
+	      <listitem>
+		<para>
+		  The human-readable text of the diagnostic.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>enable</literal></term>
+	      <listitem>
+		<para>
+		  The command line option that enables this diagnostic.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>disable</literal></term>
+	      <listitem>
+		<para>
+		  The command line option that disables this diagnostic.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>category</literal></term>
+	      <listitem>
+		<para>
+		  The category name of this diagnostic.  The list of possible
+		  values can be obtained by '<userinput>clang
+		  --print-diagnostic-categories</userinput>'.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>ranges</literal></term>
+	      <listitem>
+		<para>
+		  The important elements in the source code for this diagnostic.
+		  The value is a list of range objects.  See
+		  <citerefentry><refentrytitle>range</refentrytitle>
+		  <manvolnum>1</manvolnum></citerefentry>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term>fixits</term>
+	      <listitem>
+		<para>
+		  The list of hints to fix the error.  Each element of the list
+		  is the list of the following values.
+		  <itemizedlist>
+		    <listitem>
+		      <para>A range in the translation unit.  Note that it is
+		      half-open range, so the character at the end of the range
+		      is not included in the range.</para>
+		    </listitem>
+		    <listitem>
+		      <para>A string, by which the range of the source code is
+		      replaced.</para>
+		    </listitem>
+		  </itemizedlist>
+		</para>
+	      </listitem>
+	    </varlistentry>
+	  </variablelist>
+	</para>
+      </refsection>
+
+    </refentry>
+-->
+  </refbody>
+</reference>

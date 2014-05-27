@@ -1,0 +1,919 @@
+<book xmlns='http://docbook.org/ns/docbook'
+      xmlns:xlink='http://www.w3.org/1999/xlink'
+      version='5.0'>
+  <info>
+    <title>Libclang Tcl Language Binding</title>
+    <copyright>
+      <year>2014</year>
+      <holder>Taketsuru</holder>
+    </copyright>
+  </info>
+
+  <reference>
+    <title>Reference</title>
+
+    <refentry xml:id='ref.indexName.options'>
+      <refmeta>
+	<refentrytitle>indexName options</refentrytitle>
+	<manvolnum>1</manvolnum>
+      </refmeta>
+
+      <refnamediv>
+	<refname><replaceable>indexName</replaceable> options</refname>
+	<refpurpose>
+	  get/set options associated with an index instance
+	</refpurpose>
+      </refnamediv>
+
+      <refsynopsisdiv>
+	<cmdsynopsis>
+	  <command><replaceable>indexName</replaceable> options</command>
+	</cmdsynopsis>
+	<cmdsynopsis>
+	  <command><replaceable>indexName</replaceable> options</command>
+	  <arg choice='plain'><option>-none</option></arg>
+	</cmdsynopsis>
+	<cmdsynopsis>
+	  <command><replaceable>indexName</replaceable> options</command>
+	  <arg><option>-backgroundIndexing</option></arg>
+	  <arg><option>-backgroundEditing</option></arg>
+	  <arg><option>-background</option></arg>
+	</cmdsynopsis>
+      </refsynopsisdiv>
+
+      <refsection>
+	<title>Description</title>
+
+	<para>
+	  Each instance created by <command
+	  linkend='ref.index'>index</command> has a set of options.  The
+	  options control how translation units is parsed in the index.  This
+	  command gets/sets the options set of
+	  <replaceable>indexName</replaceable>.
+	</para>
+
+	<para>There are three forms:
+	<itemizedlist>
+	  <listitem>
+	    <cmdsynopsis>
+	      <command><replaceable>indexName</replaceable> options</command>
+	    </cmdsynopsis>
+	    <para>
+	      Return the list of options of
+	      <replaceable>indexName</replaceable> if it's not empty.
+	      Otherwise, return <option>-none</option>.
+	    </para>
+	  </listitem>
+	  <listitem>
+	    <cmdsynopsis>
+	      <command><replaceable>indexName</replaceable> options</command>
+	      <arg choice='plain'><option>-none</option></arg>
+	    </cmdsynopsis>
+	    <para>
+	      Clear the options set of <replaceable>indexName</replaceable>
+	      and return an empty string.
+	    </para>
+	  </listitem>
+	  <listitem>
+	    <cmdsynopsis>
+	      <command><replaceable>indexName</replaceable> options</command>
+	      <arg choice='plain' rep='repeat'>
+		<option><replaceable>option</replaceable></option>
+	      </arg>
+	    </cmdsynopsis>
+	    <para>
+	      Replace the options set of <replaceable>indexName</replaceable>
+	      with <option><replaceable>option</replaceable>...</option> and
+	      return an empty string.
+	    </para>
+	    <para>
+	      <option><replaceable>option</replaceable></option> is one of the
+	      following:
+	      <variablelist>
+		<varlistentry>
+		  <term><option>-background</option></term>
+		  <listitem>
+		    <para>
+		      Run all the threads created by libclang at background
+		      priority.  Setting this option is equivalent to setting
+		      both <option>-backgroundEditing</option> and
+		      <option>-backgroundIndexing</option>.
+		    </para>
+		  </listitem>
+		</varlistentry>
+		<varlistentry>
+		  <term><option>-backgroundEditing</option></term>
+		  <listitem>
+		    <para>
+		      Run threads created by libclang for editing at
+		      background priority.
+		    </para>
+		  </listitem>
+		</varlistentry>
+		<varlistentry>
+		  <term><option>-backgroundIndexing</option></term>
+		  <listitem>
+		    <para>
+		      Run threads created by libclang for indexing at
+		      background priority.
+		    </para>
+		  </listitem>
+		</varlistentry>
+	      </variablelist>
+	    </para>
+	  </listitem>
+	</itemizedlist>
+	</para>
+      </refsection>
+      <refsection>
+	<title>Examples</title>
+	<para>
+	  Clear and get the options:
+	  <programlisting>
+	    $ package require cindex
+	    1.0
+	    $ cindex::index myindex
+	    $ myindex options -none
+	    $ myindex options
+	    -none
+	    $
+	  </programlisting>
+	</para>
+	<para>
+	  Set and get the options:
+	  <programlisting>
+	    $ package require cindex
+	    1.0
+	    $ cindex::index myindex
+	    $ myindex options -backgroundEditing -backgroundIndexing
+	    $ myindex options
+	    -background
+	  </programlisting>
+	  Note that the last value is <option>-background</option> since setting
+	  both <option>-backgroundEditing</option> and
+	  <option>-backgroundIndexing</option> is equivalent to
+	  <option>-background</option>.
+	</para>
+      </refsection>
+
+      <refsection>
+	<title>See Also</title>
+	<para>
+	  <citerefentry linkend='ref.index'><refentrytitle>index</refentrytitle>
+	  <manvolnum>1</manvolnum></citerefentry>
+	</para>
+      </refsection>
+    </refentry>
+
+    <refentry xml:id='ref.indexName.translationUnit'>
+      <refmeta>
+	<refentrytitle>indexName translationUnit</refentrytitle>
+	<manvolnum>1</manvolnum>
+      </refmeta>
+
+      <refnamediv>
+	<refname><replaceable>indexName</replaceable> translationUnit</refname>
+	<refpurpose>
+	  create a translation unit
+	</refpurpose>
+      </refnamediv>
+
+      <refsynopsisdiv>
+	<cmdsynopsis>
+	  <command><replaceable>indexName</replaceable>
+	  translationUnit</command>
+	  <arg><option>-cacheCompletionResults</option></arg>
+	  <arg><option>-detailedPreprocessingRecord</option></arg>
+	  <arg><option>-forSerialization</option></arg>
+	  <arg><option>-includeBriefCommentsInCodeCompletion</option></arg>
+	  <arg><option>-incomplete</option></arg>
+	  <arg><option>-parseLater</option></arg>
+	  <arg><option>-precompiledPreamble</option></arg>
+	  <arg><option>-skipFunctionBodies</option></arg>
+	  <arg>
+	    <option>-sourceFile</option>
+	    <replaceable>filename</replaceable>
+	  </arg>
+	  <arg>
+	    <option>-unsaveFile</option>
+	    <replaceable>filename</replaceable>
+	    <replaceable>contents</replaceable>
+	  </arg>
+	  <arg><option>--</option></arg>
+	  <arg choice='plain'>
+	  <replaceable>translationUnitName</replaceable></arg>
+	  <arg choice='plain' rep='repeat'>
+	    <replaceable>compilerCommnadLineArg</replaceable>
+	  </arg>
+	</cmdsynopsis>
+      </refsynopsisdiv>
+
+      <refsection>
+	<title>Descriptions</title>
+	<para>
+	  <command><replaceable>indexName</replaceable>
+	  translationUnit</command> defines
+	  <replaceable>translationUnitName</replaceable>.  The newly defined
+	  command is used to query properties of a translation unit.
+	</para>
+
+	<para>
+	  The main source file of the translation unit is specified in one of
+	  two ways:
+	  <itemizedlist>
+	    <listitem>
+	      <para>
+		By <option>-sourceFile</option>.  The file name of the main
+		source file follows the option.
+	      </para>
+	    </listitem>
+	    <listitem>
+	      <para>By a <replaceable>commandLineArg</replaceable>.  The file
+	      name of the main source file is specified in the same way as
+	      compiler's command line.</para>
+	    </listitem>
+	  </itemizedlist>
+	</para>
+
+	<para>
+	  The following options are available:
+	  <variablelist>
+	    <varlistentry>
+	      <term><option>-cacheCompletionResults</option></term>
+	      <listitem>
+		<para>
+		  Cache code completion results.  This option adds some
+		  overheads to reparse operation but enhances the performance of
+		  code completion.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-detailedPreprocessingRecord</option></term>
+	      <listitem>
+		<para>
+		  Record macro definitions and instantiations.  This enables
+		  querying such properties.  This option increases memory
+		  footprint and time necessary to parse the translation unit.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-forSerialization</option></term>
+	      <listitem>
+		<para>
+		  Prepare to do <replaceable>translationUnitName</replaceable>
+		  <command>save</command>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-includeBriefCommentsInCodeCompletion</option></term>
+	      <listitem>
+		<para>
+		  Include brief documentations in comments into the set of code
+		  completions.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-incomplete</option></term>
+	      <listitem>
+		<para>
+		  Suppress semantic analysis performed at the end of translation
+		  unit.  This is useful when parsing a header file to generate
+		  precompiled header.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-parseLater</option></term>
+	      <listitem>
+		<para>
+		  Don't parse the translation unit.  To parse the created
+		  translation unit, do
+		  <replaceable>translationUnitName</replaceable>
+		  <command>reparse</command>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-precompiledPreamble</option></term>
+	      <listitem>
+		<para>
+		  
+		</para>
+	      </listitem>
+	    </varlistentry>
+	  </variablelist>
+	</para>
+      </refsection>
+    </refentry>
+
+    <refentry>
+      <refmeta>
+	<refentrytitle>translationUnitName cursor</refentrytitle>
+	<manvolnum>1</manvolnum>
+      </refmeta>
+
+      <refnamediv>
+	<refname><replaceable>translationUnitName</replaceable> cursor</refname>
+	<refpurpose>get a cursor pointing an AST node of a translation
+	unit</refpurpose>
+      </refnamediv>
+
+      <refsynopsisdiv>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable> cursor</command>
+	</cmdsynopsis>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable> cursor</command>
+	  <arg choice='plain'>
+	    <option>-location</option> <replaceable>sourceLocation</replaceable>
+	  </arg>
+	</cmdsynopsis>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable> cursor</command>
+	  <arg choice='plain'>
+	    <option>-file</option> <replaceable>filename</replaceable>
+	    <option>-line</option> <replaceable>line</replaceable>
+	    <option>-column</option> <replaceable>column</replaceable>
+	  </arg>
+	</cmdsynopsis>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable> cursor</command>
+	  <arg choice='plain'>
+	    <option>-file</option> <replaceable>filename</replaceable>
+	    <option>-offset</option> <replaceable>offset</replaceable>
+	  </arg>
+	</cmdsynopsis>
+      </refsynopsisdiv>
+
+      <refsection>
+	<title>Description</title>
+	<para>
+	  If no arguments are given, the return value is a cursor pointing the
+	  root node of <replaceable>translationUnitName</replaceable>.
+	</para>
+	<para>
+	  Otherwise, the argument list specifies a location in
+	  <replaceable>translationUnitName</replaceable>.  In this case, the
+	  return value is a cursor pointing the most descendent AST node
+	  spanning the specified location.  The argument list is one of the
+	  following form:
+	  <variablelist>
+	    <varlistentry>
+	      <term>
+		<option>-location</option>
+		<replaceable>sourceLocation</replaceable>
+	      </term>
+	      <listitem>
+		<para>
+		  The location is <replaceable>sourceLocation</replaceable>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term>
+		<option>-file</option>
+		<replaceable>filename</replaceable>
+		<option>-line</option>
+		<replaceable>line</replaceable>
+		<option>-column</option>
+		<replaceable>column</replaceable>
+	      </term>
+	      <listitem>
+		<para>
+		  The location is at <replaceable>line</replaceable> and
+		  <replaceable>column</replaceable> in
+		  <replaceable>filename</replaceable>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term>
+		<option>-file</option>
+		<replaceable>filename</replaceable>
+		<option>-offset</option>
+		<replaceable>offset</replaceable>
+	      </term>
+	      <listitem>
+		<para>
+		  The location is at <replaceable>offset</replaceable> in
+		  <replaceable>filename</replaceable>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	  </variablelist>
+	</para>
+      </refsection>
+    </refentry>
+
+    <refentry>
+      <refmeta>
+	<refentrytitle>translationUnitName location</refentrytitle>
+	<manvolnum>1</manvolnum>
+      </refmeta>
+
+      <refnamediv>
+	<refname><replaceable>translationUnitName</replaceable> location</refname>
+	<refpurpose>get a location in a translation unit</refpurpose>
+      </refnamediv>
+
+      <refsynopsisdiv>
+	<cmdsynopsis>
+	  <command>
+	    <replaceable>translationUnitName</replaceable> location
+	  </command>
+	  <arg choice='plain'>
+	    <option>-file</option> <replaceable>filename</replaceable>
+	    <option>-line</option> <replaceable>line</replaceable>
+	    <option>-column</option> <replaceable>column</replaceable>
+	  </arg>
+	</cmdsynopsis>
+	<cmdsynopsis>
+	  <command>
+	    <replaceable>translationUnitName</replaceable> location
+	  </command>
+	  <arg choice='plain'>
+	    <option>-file</option> <replaceable>filename</replaceable>
+	    <option>-offset</option> <replaceable>offset</replaceable>
+	  </arg>
+	</cmdsynopsis>
+      </refsynopsisdiv>
+
+      <refsection>
+	<title>Description</title>
+	<para>
+	  This command returns a location in
+	  <replaceable>translationUnitName</replaceable>.  The location is
+	  specified in one of the following ways:
+	  <variablelist>
+	    <varlistentry>
+	      <term>
+		<option>-file</option>
+		<replaceable>filename</replaceable>
+		<option>-line</option>
+		<replaceable>line</replaceable>
+		<option>-column</option>
+		<replaceable>column</replaceable>
+	      </term>
+	      <listitem>
+		<para>
+		  The location is at <replaceable>line</replaceable> and
+		  <replaceable>column</replaceable> in
+		  <replaceable>filename</replaceable>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term>
+		<option>-file</option>
+		<replaceable>filename</replaceable>
+		<option>-offset</option>
+		<replaceable>offset</replaceable>
+	      </term>
+	      <listitem>
+		<para>
+		  The location is at <replaceable>offset</replaceable> in
+		  <replaceable>filename</replaceable>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	  </variablelist>
+	  The specified location must be a part of
+	  <replaceable>translationUnitName</replaceable>.
+	</para>
+      </refsection>
+    </refentry>
+
+    <refentry>
+      <refmeta>
+	<refentrytitle>translationUnitName diagnostic decode</refentrytitle>
+	<manvolnum>1</manvolnum>
+      </refmeta>
+
+      <refnamediv>
+	<refname>
+	  <replaceable>translationUnitName</replaceable> diagnostic decode
+	</refname>
+	<refpurpose>get a key-value list describing a diagnostic</refpurpose>
+      </refnamediv>
+
+      <refsynopsisdiv>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable> diagnostic
+	  decode</command>
+	  <arg><replaceable>index</replaceable></arg>
+	</cmdsynopsis>
+      </refsynopsisdiv>
+
+      <refsection>
+	<title>Description</title>
+	<para>
+	  This command returns a dictionary value that describes
+	  <replaceable>index</replaceable>'th diagnostic in
+	  <replaceable>translationUnitName</replaceable> (0 refers to the first
+	  diagnostic).  If <replaceable>index</replaceable> is negative or
+	  greater than or equal to the number of diagnostics in
+	  <replaceable>translationUnitName</replaceable>, an error is signalled.
+	</para>
+
+	<para>
+	  The returned dictionary value has the following key-value pairs:
+	  <variablelist>
+	    <varlistentry>
+	      <term><literal>severity</literal></term>
+	      <listitem>
+		<para>
+		  The severity of the diagnostic.  The value is one of the
+		  following:
+		  <variablelist>
+		    <varlistentry>
+		      <term><literal>ignored</literal></term>
+		      <listitem>
+			<para>
+			  This diagnostic is suppressed.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><literal>note</literal></term>
+		      <listitem>
+			<para>
+			  This diagnostic is a supplementary to the previous
+			  non-note diagnostic.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><literal>warning</literal></term>
+		      <listitem>
+			<para>
+			  This diagnostic indicates that the code is suspicious.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><literal>error</literal></term>
+		      <listitem>
+			<para>
+			  This diagnostic indicates that the code is wrong.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><literal>fatal</literal></term>
+		      <listitem>
+			<para>
+			  This diagnostic indicates that the code is wrong and
+			  libclang can not recover from the error.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		  </variablelist>
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>location</literal></term>
+	      <listitem>
+		<para>
+		  The source location of the diagnostic.  See <citerefentry>
+		  <refentrytitle>location</refentrytitle>
+		  <manvolnum>1</manvolnum></citerefentry>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>spelling</literal></term>
+	      <listitem>
+		<para>
+		  The human-readable text of the diagnostic.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>enable</literal></term>
+	      <listitem>
+		<para>
+		  The command line option that enables this diagnostic.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>disable</literal></term>
+	      <listitem>
+		<para>
+		  The command line option that disables this diagnostic.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>category</literal></term>
+	      <listitem>
+		<para>
+		  The category name of this diagnostic.  The list of possible
+		  values can be obtained by '<userinput>clang
+		  --print-diagnostic-categories</userinput>'.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><literal>ranges</literal></term>
+	      <listitem>
+		<para>
+		  The important elements in the source code for this diagnostic.
+		  The value is a list of range objects.  See
+		  <citerefentry><refentrytitle>range</refentrytitle>
+		  <manvolnum>1</manvolnum></citerefentry>.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term>fixits</term>
+	      <listitem>
+		<para>
+		  The list of hints to fix the error.  Each element of the list
+		  is the list of the following values.
+		  <itemizedlist>
+		    <listitem>
+		      <para>A range in the translation unit.  Note that it is
+		      half-open range, so the character at the end of the range
+		      is not included in the range.</para>
+		    </listitem>
+		    <listitem>
+		      <para>A string, by which the range of the source code is
+		      replaced.</para>
+		    </listitem>
+		  </itemizedlist>
+		</para>
+	      </listitem>
+	    </varlistentry>
+	  </variablelist>
+	</para>
+      </refsection>
+
+    </refentry>
+
+    <refentry xml:id='ref.translationUnitName.diagnostic.format'>
+      <refmeta>
+	<refentrytitle>
+	  translationUnitName diagnostic format
+	</refentrytitle>
+      </refmeta>
+
+      <refnamediv>
+	<refname><replaceable>translationUnitName</replaceable>
+	diagnostic format</refname>
+	<refpurpose>get a human-readable representation of a diagnostic</refpurpose>
+      </refnamediv>
+
+      <refsynopsisdiv>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable>
+	  diagnostic format</command>
+	  <arg choice='plain'><replaceable>index</replaceable></arg>
+	</cmdsynopsis>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable>
+	  diagnostic format</command>
+	  <arg choice='plain'><option>-none</option></arg>
+	  <arg choice='plain'><replaceable>index</replaceable></arg>
+	</cmdsynopsis>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable>
+	  diagnostic format</command>
+	  <arg><option>-displaySourceLocation</option></arg>
+	  <arg><option>-displayColumn</option></arg>
+	  <arg><option>-displaySourceRanges</option></arg>
+	  <arg><option>-displayOption</option></arg>
+	  <arg><option>-displayCategoryId</option></arg>
+	  <arg><option>-displayCategoryName</option></arg>
+	  <arg choice='plain'><replaceable>index</replaceable></arg>
+	</cmdsynopsis>
+      </refsynopsisdiv>
+
+      <refsection>
+	<title>Description</title>
+	<para>
+	  <command><replaceable>translationUnitName</replaceable> diagnostic
+	  format</command> formats <replaceable>index</replaceable>-th
+	  diagnostic of <replaceable>translationUnitName</replaceable> in a
+	  manner that suitable for display.  <replaceable>index</replaceable>
+	  of 0 formats the first diagnostic.
+	</para>
+	<para>
+	  The optional argument list has three forms:
+	  <variablelist>
+	    <varlistentry>
+	      <term>empty</term>
+	      <listitem>
+		<para>
+		  The command formats a diagnostic in a manner that closely
+		  mimics the behavior of clang compiler.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><option>-none</option></term>
+	      <listitem>
+		<para>
+		  The command formats a diagnostic without the effects of any
+		  options.
+		</para>
+	      </listitem>
+	    </varlistentry>
+	    <varlistentry>
+	      <term><replaceable>option</replaceable>...</term>
+	      <listitem>
+		<para>
+		  The following options are available:
+		  <variablelist>
+		    <varlistentry>
+		      <term><option>-displaySourceLocation</option></term>
+		      <listitem>
+			<para>
+			  Display the location of the diagnostic.  The
+			  formatted string will be prefixed by the file name,
+			  the line number to which the diagnostic refers.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fshow-source-location</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><option>-displayColumn</option></term>
+		      <listitem>
+			<para>
+			  Display the column number to which the diagnostic
+			  refers.  This option implies
+			  <option>-displaySourceLocation</option>.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fshow-column</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><option>-displaySourceRanges</option></term>
+		      <listitem>
+			<para>
+			  Display the machine-parsable source range to which
+			  diagnostic refers.  This option implies
+			  <option>-displaySourceLocation</option>.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fdiagnostics-print-source-range-info</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><option>-displayOption</option></term>
+		      <listitem>
+			<para>
+			  Display the option associated with this diagnostic.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fdiagnostics-show-option</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><option>-displayCategoryId</option></term>
+		      <listitem>
+			<para>
+			  Display the category ID associated with the
+			  diagnostic.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fdiagnostics-show-category=id</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		    <varlistentry>
+		      <term><option>-displayCategoryName</option></term>
+		      <listitem>
+			<para>
+			  Display the category name associated with the
+			  diagnostic.
+			</para>
+			<para>
+			  This option corresponds to the clang flag
+			  <option>-fdiagnostics-show-category=name</option>.
+			</para>
+		      </listitem>
+		    </varlistentry>
+		  </variablelist>
+		</para>
+	      </listitem>
+	    </varlistentry>
+	  </variablelist>
+	</para>
+      </refsection>
+
+    </refentry>
+
+
+    <refentry xml:id='ref.translationUnitName.diagnostic.number'>
+      <refmeta>
+	<refentrytitle>
+	  translationUnitName diagnostic number
+	</refentrytitle>
+      </refmeta>
+
+      <refnamediv>
+	<refname>translationUnitName diagnostic number</refname>
+	<refpurpose>get the number of diagnostics in a translation unit</refpurpose>
+      </refnamediv>
+
+      <refsynopsisdiv>
+	<cmdsynopsis>
+	  <command><replaceable>translationUnitName</replaceable>
+	  diagnostic number</command>
+	</cmdsynopsis>
+      </refsynopsisdiv>
+
+      <refsection>
+	<title>Description</title>
+	<para>
+	  <command><replaceable>translationUnitName</replaceable> diagnostic
+	  number</command> returns the number of diagnostics in
+	  <replaceable>translationUnitName</replaceable>.
+	</para>
+      </refsection>
+
+    </refentry>
+
+<refentry xml:id='ref.translationUnitName.isMultipleIncludeGuarded'>
+  <refmeta>
+    <refentrytitle>
+      translationUnitName isMultipleIncludeGuarded
+    </refentrytitle>
+  </refmeta>
+
+  <refnamediv>
+    <refname>translationUnitName isMultipleIncludeGuarded</refname>
+    <refpurpose>determines whether a header has a multiple include guard</refpurpose>
+  </refnamediv>
+
+  <refsynopsisdiv>
+    <cmdsynopsis>
+      <command><replaceable>translationUnitName</replaceable>
+      isMultipleIncludeGuarded</command>
+      <arg choice='plain'><replaceable>filename</replaceable></arg>
+    </cmdsynopsis>
+  </refsynopsisdiv>
+
+  <refsection>
+    <title>Description</title>
+    <para>
+      <command><replaceable>translationUnitName</replaceable>
+      isMultipleIncludeGuarded</command> returns an empty string,
+      <literal>0</literal>, or <literal>1</literal> as follows:
+      <variablelist>
+	<varlistentry>
+	  <term><replaceable>filename</replaceable> is not a part of
+	  <replaceable>translationUnitName</replaceable>.</term>
+	  <listitem>
+	    <para>empty string</para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term><replaceable>filename</replaceable> is a part of
+	  <replaceable>translationUnitName</replaceable> and is not guarded
+	  against multiple inclusions.</term>
+	  <listitem>
+	    <para>0</para>
+	  </listitem>
+	</varlistentry>
+	<varlistentry>
+	  <term><replaceable>filename</replaceable> is a part of
+	  <replaceable>translationUnitName</replaceable> and is not guarded
+	  against multiple inclusions.</term>
+	  <listitem>
+	    <para>1</para>
+	  </listitem>
+	</varlistentry>
+      </variablelist>
+    </para>
+  </refsection>
+
+  <refsection>
+    <title>Examples</title>
+    <para>
+      
+    </para>
+  </refsection>
+</refentry>
+
+
+
+</reference>
+</book>

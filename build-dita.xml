@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="dita" default="dita" basedir=".">
+  <target name="dita">
+    <ant antfile="${dita.dir}${file.separator}build.xml">
+    </ant>
+  </target>
+</project>

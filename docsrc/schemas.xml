@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<locatingRules xmlns="http://thaiopensource.com/ns/locating-rules/1.0">
+  <uri resource="command-indexName-translationUnit.dita" uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
+  <uri resource="command-indexName-options.dita" uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
+  <uri resource="refman.docbook" uri="../../docbook-5.0/rng/docbook.rnc"/>
+  <uri resource="command-index.dita" uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
+</locatingRules>

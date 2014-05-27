@@ -27,39 +27,38 @@
 # ============================================================================
 
 TCLSH		= /usr/local/bin/tclsh8.6
-FOP		= /usr/local/bin/fop
-XSLTPROC	= /usr/local/bin/xsltproc
-XMLLINT		= /usr/local/bin/xmllint
 CFLAGS		= -DBIST -Wall -g -fPIC \
-		-I /usr/local/include -I /usr/local/include/tcl8.6/
-DOCBOOK_RNG	= ../docbook-5.0/rng/docbook.rng
-DOCBOOK_XSL	= ../docbook-xsl-ns-1.78.1
+		-I /usr/local/include -I /usr/local/include/tcl8.6
+DITAOTI		= ../DITA-OT1.8.4
+ANT		= $(DITAOTI)/tools/ant/bin/ant
+ANT_OPTS	= -Xmx512m -Djavax.xml.transform.TransformerFactory=net.sf.saxon.TransformerFactoryImpl
+ANT_HOME	= $(DITAOTI)/tools/ant
+CLASSPATH	= $(DITAOTI)/lib/saxon/saxon9-dom.jar:$(DITAOTI)/lib/saxon/saxon9.jar:$(DITAOTI)/lib/xml-apis.jar:$(DITAOTI)/lib/xercesImpl.jar:$(DITAOTI)/lib/icu4j.jar:$(DITAOTI)/lib/resolver.jar:$(DITAOTI)/lib/commons-codec-1.4.jar:$(DITAOTI)/lib:$(DITAOTI)/lib/dost.jar
 
-default: libcindex.so refman.html
+default: libcindex.so
 
 obj/libcindex.o: src/libcindex.c
 	mkdir -p obj
 	$(CC) -c -o obj/libcindex.o $(CFLAGS) src/libcindex.c
 
-libcindex.so: obj/libcindex.o
-	$(CC) -shared -o libcindex.so obj/libcindex.o \
+lib/libcindex.so: obj/libcindex.o
+	$(CC) -shared -o lib/libcindex.so obj/libcindex.o \
 		-L /usr/local/lib -ltcl86 -lclang
-	chmod -x libcindex.so
+	chmod -x lib/libcindex.so
 
-obj/refman.valid: doc/en_US/refman.docbook
-	mkdir -p obj
-	rm -f refman.valid
-	$(XMLLINT) --noout --relaxng $(DOCBOOK_RNG) doc/en_US/refman.docbook
-	touch obj/refman.valid
-
-refman.html: obj/refman.valid
-	$(XSLTPROC) -o refman.html \
-		$(DOCBOOK_XSL)/html/docbook.xsl \
-		doc/en_US/refman.docbook
+doc/refman/refman.html: docsrc/refman.ditamap
+	CLASSPATH="$(CLASSPATH)" \
+	ANT_OPTS="$(ANT_OPTS)" \
+	ANT_HOME="$(ANT_HOME)" \
+		$(ANT) -f build-dita.xml \
+			-Ddita.dir=$(DITAOTI) \
+			-Dargs.input=docsrc/refman.ditamap \
+			-Dtranstype=xhtml \
+			-Doutput.dir=doc/refman
 
 clean:
-	rm -f libcindex.so refman.html
-	rm -rf obj man
+	rm -f lib/libcindex.so
+	rm -rf obj doc man
 
-test:	libcindex.so
-	TCLLIBPATH=. $(TCLSH) src/cindex.test
+test:	lib/libcindex.so
+	TCLLIBPATH=lib $(TCLSH) src/cindex.test

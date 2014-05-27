@@ -43,17 +43,17 @@
 static unsigned long cstringHash(const char *str)
 {
    unsigned long        hash = 0;
+   const unsigned char *cp   = (const unsigned char *)str;
    int                  c;
-   const unsigned char *cp = (const unsigned char *)str;
 
-   while ( (c = *cp++) ) {
+   while ((c = *cp++) != 0) {
       hash = c + (hash << 6) + (hash << 16) - hash;
    }
 
    return hash;
 }
 
-static Tcl_Obj *moveCXStringToObj(CXString str)
+static Tcl_Obj *convertCXStringToObj(CXString str)
 {
    const char *cstr   = clang_getCString(str);
    Tcl_Obj    *result = Tcl_NewStringObj(cstr, -1);
@@ -96,6 +96,7 @@ typedef struct NameValuePair
    int         value;
 } NameValuePair;
 
+// Create two dictionaries from an array of name and value pairs.
 static void
 createNameValueTable(Tcl_Obj             **valueToNameDictPtr,
                      Tcl_Obj             **nameToValueDictPtr,
@@ -311,16 +312,20 @@ static Tcl_Obj *newLayoutLongLongObj(long long value)
       return newUintmaxObj(value);
    }
 
-   Tcl_Obj *valueObj = Tcl_NewLongObj(value);
+   if (value < INT_MIN) {
+      Tcl_Panic("%s: unknown layout error: %lld", __func__, value);
+   }
+
+   Tcl_Obj *valueObj = Tcl_NewIntObj(value);
    Tcl_IncrRefCount(valueObj);
 
-   Tcl_Obj *resultObj;
+   Tcl_Obj *resultObj = NULL;
    int status = Tcl_DictObjGet(NULL, layoutErrorNames, valueObj, &resultObj);
 
    Tcl_DecrRefCount(valueObj);
 
    if (status != TCL_OK) {
-      Tcl_Panic("unknown layout error: %lld", value);
+      Tcl_Panic("%s: unknown layout error: %lld", __func__, value);
    }
 
    return resultObj;
@@ -356,7 +361,7 @@ static Tcl_Obj *getEnum(EnumConsts *labels, int value)
    return labels->labels[value];
 }
 
-//---------------------------------------------------------- CXVersion mapping
+//------------------------------------------------------------------ CXVersion
 
 static Tcl_Obj *newVersionObj(CXVersion version)
 {
@@ -438,7 +443,7 @@ static int bitMaskToString(Tcl_Interp *interp,
    return status;
 }
 
-//-------------------------------------------------- CXSourceLocation mapping
+//----------------------------------------------------------- CXSourceLocation
 
 static Tcl_Obj *fileNameCache[64];
 static Tcl_Obj *locationTagObj;
@@ -560,7 +565,8 @@ static int getLocationFromObj(Tcl_Interp       *interp,
 
  invalid:
    if (interp != NULL) {
-      Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid source location", -1));
+      Tcl_SetObjResult(interp,
+                       Tcl_NewStringObj("invalid source location", -1));
    }
 
    return TCL_ERROR;
@@ -724,18 +730,19 @@ static Tcl_Obj *newDecodedLocationObj(CXFile   file,
    return Tcl_NewListObj(nelms, elms);
 }
 
-//-------------------------------------------------------------- index mapping
+//---------------------------------------------------------------------- index
 
 /** The information associated to an index Tcl command.
  */
 typedef struct IndexInfo
 {
    Tcl_Interp *interp;
-   Tcl_Obj    *children;
+   Tcl_Obj    *children;        // Tcl list of child, such as a translation
+                                // unit, command names
    CXIndex     index;
 } IndexInfo;
 
-static IndexInfo * createIndexInfo(Tcl_Interp *interp, CXIndex index)
+static IndexInfo *createIndexInfo(Tcl_Interp *interp, CXIndex index)
 {
    IndexInfo *info = (IndexInfo *)Tcl_Alloc(sizeof *info);
    info->interp    = interp;
@@ -854,7 +861,7 @@ static void indexRemoveChild(IndexInfo *info, Tcl_Obj *child)
    }
 }
 
-//--------------------------------------------------- translation unit mapping
+//----------------------------------------------------------- translation unit
 
 typedef struct TUInfo
 {
@@ -924,7 +931,7 @@ static TUInfo * lookupTranslationUnit(CXTranslationUnit tu)
    return NULL;
 }
 
-//--------------------------------------------------------- diagnostic mapping
+//----------------------------------------------------------------- diagnostic
 
 static EnumConsts diagnosticSeverityLabels = {
    .names = {
@@ -986,15 +993,15 @@ static Tcl_Obj *newDiagnosticObj(CXDiagnostic diagnostic)
    resultArray[location_ix]  = newLocationObj(location);
 
    CXString spelling        = clang_getDiagnosticSpelling(diagnostic);
-   resultArray[spelling_ix] = moveCXStringToObj(spelling);
+   resultArray[spelling_ix] = convertCXStringToObj(spelling);
 
    CXString disable;
    CXString option         = clang_getDiagnosticOption(diagnostic, &disable);
-   resultArray[enable_ix]  = moveCXStringToObj(option);
-   resultArray[disable_ix] = moveCXStringToObj(disable);
+   resultArray[enable_ix]  = convertCXStringToObj(option);
+   resultArray[disable_ix] = convertCXStringToObj(disable);
 
    CXString category        = clang_getDiagnosticCategoryText(diagnostic);
-   resultArray[category_ix] = moveCXStringToObj(category);
+   resultArray[category_ix] = convertCXStringToObj(category);
 
    unsigned   numRanges = clang_getDiagnosticNumRanges(diagnostic);
    Tcl_Obj  **ranges    = (Tcl_Obj **)Tcl_Alloc(sizeof(Tcl_Obj *) * numRanges);
@@ -1013,7 +1020,7 @@ static Tcl_Obj *newDiagnosticObj(CXDiagnostic diagnostic)
 
       Tcl_Obj *fixit[2];
       fixit[0] = newRangeObj(range);
-      fixit[1] = moveCXStringToObj(fixitStr);
+      fixit[1] = convertCXStringToObj(fixitStr);
 
       fixits[i] = Tcl_NewListObj(2, fixit);
    }
@@ -1023,7 +1030,7 @@ static Tcl_Obj *newDiagnosticObj(CXDiagnostic diagnostic)
    return Tcl_NewListObj(nelms, resultArray);
 }
 
-//------------------------------------------------------------- cursor mapping
+//--------------------------------------------------------------------- cursor
 
 static Tcl_Obj *cursorKindNames;
 static Tcl_Obj *cursorKindValues;
@@ -1371,7 +1378,8 @@ static Tcl_Obj *newCursorObj(CXCursor cursor)
    return Tcl_NewListObj(nelms, elms);
 }
 
-static int getCursorFromObj(Tcl_Interp *interp, Tcl_Obj *obj, CXCursor *cursor)
+static int
+getCursorFromObj(Tcl_Interp *interp, Tcl_Obj *obj, CXCursor *cursor)
 {
    CXCursor result = { 0 };
 
@@ -1401,7 +1409,8 @@ static int getCursorFromObj(Tcl_Interp *interp, Tcl_Obj *obj, CXCursor *cursor)
 
    if (kindObj == NULL) {
       const char *kind = Tcl_GetStringFromObj(elms[kind_ix], NULL);
-      Tcl_SetObjResult(interp, Tcl_ObjPrintf("invalid cursor kind: %s", kind));
+      Tcl_SetObjResult(interp,
+                       Tcl_ObjPrintf("invalid cursor kind: %s", kind));
       return TCL_ERROR;
    }
 
@@ -1440,12 +1449,12 @@ static int getCursorFromObj(Tcl_Interp *interp, Tcl_Obj *obj, CXCursor *cursor)
    return TCL_ERROR;
 }
 
-//------------------------------------------------------------- type mapping
+//----------------------------------------------------------------------- type
 
 static Tcl_Obj *typeKindValues;
 static Tcl_Obj *typeKindNames;
 
-void createCXTypeTable(void)
+static void createCXTypeTable(void)
 {
    static NameValuePair table[] = {
       { "Invalid",
@@ -1553,7 +1562,7 @@ void createCXTypeTable(void)
    Tcl_IncrRefCount(typeKindValues);
 }
 
-Tcl_Obj *newCXTypeObj(CXType type)
+static Tcl_Obj *newCXTypeObj(CXType type)
 {
    Tcl_Obj *kind = Tcl_NewIntObj(type.kind);
    Tcl_IncrRefCount(kind);
@@ -1583,7 +1592,7 @@ Tcl_Obj *newCXTypeObj(CXType type)
    return Tcl_NewListObj(nelms, elements);
 }
 
-int getTypeFromObj(Tcl_Interp *interp, Tcl_Obj *obj, CXType *output)
+static int getTypeFromObj(Tcl_Interp *interp, Tcl_Obj *obj, CXType *output)
 {
    CXType result = { 0 };
 
@@ -1674,7 +1683,7 @@ static int typeEqualObjCmd(ClientData     clientData,
 static Tcl_Obj *callingConvValues;
 static Tcl_Obj *callingConvNames;
 
-void createCallingConvTable(void)
+static void createCallingConvTable(void)
 {
    static NameValuePair table[] = {
       { "Default",
@@ -1880,7 +1889,7 @@ typedef int (*TypeToEnumProc)(CXType);
 
 typedef struct TypeToEnumInfo
 {
-   EnumConsts       *labels;
+   EnumConsts     *labels;
    TypeToEnumProc  proc;
 } TypeToEnumInfo;
 
@@ -2356,7 +2365,7 @@ static int cursorPlatformAvailabilityObjCmd(ClientData     clientData,
    resultElms[deprecated_message_tag_ix]
       = deprecatedMessageTagObj;
    resultElms[deprecated_message_ix]
-      = moveCXStringToObj(deprecated_message);
+      = convertCXStringToObj(deprecated_message);
 
    resultElms[always_unavailable_tag_ix]
       = alwaysUnavailableTagObj;
@@ -2366,7 +2375,7 @@ static int cursorPlatformAvailabilityObjCmd(ClientData     clientData,
    resultElms[unavailable_message_tag_ix]
       = unavailableMessageTagObj;
    resultElms[unavailable_message_ix]
-      = moveCXStringToObj(unavailable_message);
+      = convertCXStringToObj(unavailable_message);
 
    resultElms[availability_tag_ix]
       = availabilityTagObj;
@@ -2394,7 +2403,7 @@ static int cursorPlatformAvailabilityObjCmd(ClientData     clientData,
       elms[platform_tag_ix]
          = availabilityPlatformTagObj;
       elms[platform_ix]
-         = moveCXStringToObj(availability[i].Platform);
+         = convertCXStringToObj(availability[i].Platform);
 
       elms[introduced_tag_ix]
          = availabilityIntroducedTagObj;
@@ -2419,7 +2428,7 @@ static int cursorPlatformAvailabilityObjCmd(ClientData     clientData,
       elms[message_tag_ix]
          = availabilityMessageTagObj;
       elms[message_ix]
-         = moveCXStringToObj(availability[i].Message);
+         = convertCXStringToObj(availability[i].Message);
 
       Tcl_Obj *elm = Tcl_NewListObj(nelms, elms);
       Tcl_ListObjAppendElement(NULL, resultElms[i], elm);
@@ -2739,7 +2748,7 @@ static int cursorToStringObjCmd(ClientData     clientData,
    }
 
    CXString  result    = ((CXString (*)(CXCursor))clientData)(cursor);
-   Tcl_Obj  *resultObj = moveCXStringToObj(result);
+   Tcl_Obj  *resultObj = convertCXStringToObj(result);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
@@ -2771,7 +2780,7 @@ static int cursorToFileObjCmd(ClientData     clientData,
 
    CXFile    result    = ((CXFile (*)(CXCursor))clientData)(cursor);
    CXString  resultStr = clang_getFileName(result);
-   Tcl_Obj  *resultObj = moveCXStringToObj(resultStr);
+   Tcl_Obj  *resultObj = convertCXStringToObj(resultStr);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
@@ -3097,7 +3106,8 @@ static int tuDiagnosticDecodeObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   CXDiagnostic  diagnostic = clang_getDiagnostic(info->translationUnit, index);
+   CXDiagnostic  diagnostic = clang_getDiagnostic(info->translationUnit,
+                                                  index);
    Tcl_Obj      *resultObj  = newDiagnosticObj(diagnostic);
    Tcl_SetObjResult(interp, resultObj);
    clang_disposeDiagnostic(diagnostic);
@@ -3181,7 +3191,7 @@ static int tuDiagnosticFormatObjCmd(ClientData     clientData,
    CXDiagnostic  diagnostic = clang_getDiagnostic(info->translationUnit,
                                                   index);
    CXString      result     = clang_formatDiagnostic(diagnostic, flags);
-   Tcl_Obj      *resultObj  = moveCXStringToObj(result);
+   Tcl_Obj      *resultObj  = convertCXStringToObj(result);
    Tcl_SetObjResult(interp, resultObj);
    clang_disposeDiagnostic(diagnostic);
 
@@ -3764,8 +3774,8 @@ static int tuReparseObjCmd(ClientData     clientData,
          return status;
       }
 
-      switch (optionNumber) {
-      case unsavedFileOption: // -unsavedFile filename contents
+      if (optionNumber == unsavedFileOption) {
+         // -unsavedFile filename contents
          if (objc <= i + 2) {
             Tcl_WrongNumArgs(interp, i, objv, "filename contents ...");
             Tcl_DecrRefCount(unsavedFileList);
@@ -3774,20 +3784,19 @@ static int tuReparseObjCmd(ClientData     clientData,
          ++numUnsavedFiles;
          Tcl_ListObjAppendElement(NULL, unsavedFileList, objv[++i]);
          Tcl_ListObjAppendElement(NULL, unsavedFileList, objv[++i]);
-         break;
-
-      default:
+      } else {
          Tcl_Panic("what?!");
       }
    }
 
-   struct CXUnsavedFile *unsavedFiles = createUnsavedFileArray(unsavedFileList);
+   struct CXUnsavedFile *unsavedFiles =
+      createUnsavedFileArray(unsavedFileList);
    Tcl_DecrRefCount(unsavedFileList);
 
    unsigned flags  = clang_defaultReparseOptions(info->translationUnit);
    int      status = clang_reparseTranslationUnit(info->translationUnit,
-                                                  numUnsavedFiles, unsavedFiles,
-                                                  flags);
+                                                  numUnsavedFiles,
+                                                  unsavedFiles, flags);
 
    Tcl_Free((char *)unsavedFiles);
 
@@ -3859,11 +3868,11 @@ static int tuSaveObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   TUInfo *info     = (TUInfo *)clientData;
-   const char   *filename = Tcl_GetStringFromObj(objv[filename_ix], NULL);
-   unsigned      flags    = clang_defaultSaveOptions(info->translationUnit);
-   int           status   = clang_saveTranslationUnit(info->translationUnit,
-                                                      filename, flags);
+   TUInfo     *info     = (TUInfo *)clientData;
+   const char *filename = Tcl_GetStringFromObj(objv[filename_ix], NULL);
+   unsigned    flags    = clang_defaultSaveOptions(info->translationUnit);
+   int         status   = clang_saveTranslationUnit(info->translationUnit,
+                                                    filename, flags);
    switch (status) {
 
    case CXSaveError_None:
@@ -3919,7 +3928,7 @@ static int tuSourceFileObjCmd(ClientData     clientData,
    TUInfo            *info      = (TUInfo *)clientData;
    CXTranslationUnit  tu        = info->translationUnit;
    CXString           result    = clang_getTranslationUnitSpelling(tu);
-   Tcl_Obj           *resultObj = moveCXStringToObj(result);
+   Tcl_Obj           *resultObj = convertCXStringToObj(result);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
@@ -4082,7 +4091,7 @@ static int indexOptionsObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
-//----------------------------- index instance's translationUnit command
+//----------------------------------- index instance's translationUnit command
 
 enum {
    parseOptions_parseLater,
@@ -4197,7 +4206,8 @@ static int indexTranslationUnitObjCmd(ClientData     clientData,
       args[i] = Tcl_GetStringFromObj(argObjs[i], NULL);
    }
 
-   struct CXUnsavedFile *unsavedFiles = createUnsavedFileArray(unsavedFileList);
+   struct CXUnsavedFile *unsavedFiles =
+      createUnsavedFileArray(unsavedFileList);
    Tcl_DecrRefCount(unsavedFileList);
 
    IndexInfo *parent = (IndexInfo *)clientData;
@@ -4231,7 +4241,8 @@ static int indexTranslationUnitObjCmd(ClientData     clientData,
 
  wrong_num_args:
    Tcl_WrongNumArgs(interp, command_ix + 1, objv,
-                    "?options? ... ?--? translationUnitName commandLineArg...");
+                    "?options? ... ?--? "
+                    "translationUnitName commandLineArg...");
    return TCL_ERROR;
 }
 
@@ -4868,7 +4879,8 @@ static int test_newBignumObj(Tcl_Interp *interp)
 #define BIST_0xfedcba9876543210 18364758544493064720
    // test3
    {
-      Tcl_Obj *result = newBignumObj(BIST_APPEND_UL(BIST_0xfedcba9876543210), 0);
+      Tcl_Obj *result =
+         newBignumObj(BIST_APPEND_UL(BIST_0xfedcba9876543210), 0);
       const char *str = Tcl_GetStringFromObj(result, NULL);
       if (strcmp(STRINGIFY(BIST_0xfedcba9876543210), str) != 0) {
          Tcl_SetObjResult(interp, Tcl_ObjPrintf("%s: test3, %s",
@@ -4995,7 +5007,8 @@ static EnumConsts cxxRefQualifiers = {
    }
 };
 
-CXSourceRange cursorGetSpellingNameRange(CXCursor cursor, unsigned index)
+static CXSourceRange
+cursorGetSpellingNameRange(CXCursor cursor, unsigned index)
 {
    return clang_Cursor_getSpellingNameRange(cursor, index, 0);
 }
@@ -5084,101 +5097,19 @@ int Cindex_Init(Tcl_Interp *interp)
    //-------------------------------------------------------------------------
 
    static Command cmdTable[] = {
+#ifdef BIST
+      { "bist",
+        bistObjCmd },
+#endif
       { "foreachChild",
         foreachChildObjCmd },
       { "index",
         indexObjCmd },
       { "recurse",
         recurseObjCmd },
-#ifdef BIST
-      { "bist",
-        bistObjCmd },
-#endif
       { NULL }
    };
    createAndExportCommands(interp, "cindex::%s", cmdTable);
-
-   //-------------------------------------------------------------------------
-
-   Tcl_Namespace *locationNs
-      = Tcl_CreateNamespace(interp, "cindex::location", NULL, NULL);
-   Tcl_CreateEnsemble(interp, "::cindex::location", locationNs, 0);
-   Tcl_Export(interp, cindexNs, "location", 0);
-
-   static Command locationCmdTable[] = {
-      { "equal",
-        locationEqualObjCmd },
-      { "expansionLocation",
-        locationDecodeObjCmd,
-        clang_getExpansionLocation },
-      { "fileLocation",
-        locationDecodeObjCmd,
-        clang_getFileLocation },
-      { "null",
-        locationNullObjCmd },
-      { "presumedLocation",
-        locationPresumedLocationObjCmd },
-      { "spellingLocation",
-        locationDecodeObjCmd,
-        clang_getSpellingLocation },
-      { NULL }
-   };
-   createAndExportCommands(interp, "cindex::location::%s", locationCmdTable);
-
-   Tcl_Namespace *locationIsNs
-      = Tcl_CreateNamespace(interp, "cindex::location::is", NULL, NULL);
-   Tcl_CreateEnsemble(interp, "::cindex::location::is", locationIsNs, 0);
-   Tcl_Export(interp, locationNs, "is", 0);
-
-   static Command locationIsCmdTable[] = {
-      { "null",
-        locationIsNullObjCmd },
-      { "inSystemHeader",
-        locationToBoolObjCmd,
-        clang_Location_isInSystemHeader },
-      { "inMainFile",
-        locationToBoolObjCmd,
-        clang_Location_isFromMainFile },
-      { NULL }
-   };
-   createAndExportCommands
-      (interp, "cindex::location::is::%s", locationIsCmdTable);
-
-   //-------------------------------------------------------------------------
-
-   Tcl_Namespace *rangeNs
-      = Tcl_CreateNamespace(interp, "cindex::range", NULL, NULL);
-   Tcl_CreateEnsemble(interp, "::cindex::range", rangeNs, 0);
-   Tcl_Export(interp, cindexNs, "range", 0);
-
-   static Command rangeCmdTable[] = {
-      { "create",
-        rangeCreateObjCmd },
-      { "end",
-        rangeToLocationObjCmd,
-        clang_getRangeEnd },
-      { "equal",
-        rangeEqualObjCmd },
-      { "null",
-        rangeNullObjCmd },
-      { "start",
-        rangeToLocationObjCmd,
-        clang_getRangeStart },
-      { NULL }
-   };
-   createAndExportCommands(interp, "cindex::range::%s", rangeCmdTable);
-
-   Tcl_Namespace *rangeIsNs
-      = Tcl_CreateNamespace(interp, "cindex::range::is", NULL, NULL);
-   Tcl_CreateEnsemble(interp, "::cindex::range::is", rangeIsNs, 0);
-   Tcl_Export(interp, rangeNs, "is", 0);
-
-   static Command rangeIsCmdTable[] = {
-      { "null",
-        rangeIsNullObjCmd },
-      { NULL }
-   };
-   createAndExportCommands(interp, "cindex::range::is::%s", rangeIsCmdTable);
 
    //-------------------------------------------------------------------------
 
@@ -5220,12 +5151,12 @@ int Cindex_Init(Tcl_Interp *interp)
    };
 
    static Command cursorCmdTable[] = {
-      { "availability",
-        cursorToEnumObjCmd,
-        &cursorAvailabilityInfo },
       { "argument",
         cursorUnsignedToCursorObjCmd,
         clang_Cursor_getArgument },
+      { "availability",
+        cursorToEnumObjCmd,
+        &cursorAvailabilityInfo },
       { "briefCommentText",
         cursorToStringObjCmd,
         clang_Cursor_getBriefCommentText },
@@ -5396,6 +5327,88 @@ int Cindex_Init(Tcl_Interp *interp)
       { NULL }
    };
    createAndExportCommands(interp, "cindex::cursor::is::%s", cursorIsCmdTable);
+
+   //-------------------------------------------------------------------------
+
+   Tcl_Namespace *locationNs
+      = Tcl_CreateNamespace(interp, "cindex::location", NULL, NULL);
+   Tcl_CreateEnsemble(interp, "::cindex::location", locationNs, 0);
+   Tcl_Export(interp, cindexNs, "location", 0);
+
+   static Command locationCmdTable[] = {
+      { "equal",
+        locationEqualObjCmd },
+      { "expansionLocation",
+        locationDecodeObjCmd,
+        clang_getExpansionLocation },
+      { "fileLocation",
+        locationDecodeObjCmd,
+        clang_getFileLocation },
+      { "null",
+        locationNullObjCmd },
+      { "presumedLocation",
+        locationPresumedLocationObjCmd },
+      { "spellingLocation",
+        locationDecodeObjCmd,
+        clang_getSpellingLocation },
+      { NULL }
+   };
+   createAndExportCommands(interp, "cindex::location::%s", locationCmdTable);
+
+   Tcl_Namespace *locationIsNs
+      = Tcl_CreateNamespace(interp, "cindex::location::is", NULL, NULL);
+   Tcl_CreateEnsemble(interp, "::cindex::location::is", locationIsNs, 0);
+   Tcl_Export(interp, locationNs, "is", 0);
+
+   static Command locationIsCmdTable[] = {
+      { "null",
+        locationIsNullObjCmd },
+      { "inSystemHeader",
+        locationToBoolObjCmd,
+        clang_Location_isInSystemHeader },
+      { "inMainFile",
+        locationToBoolObjCmd,
+        clang_Location_isFromMainFile },
+      { NULL }
+   };
+   createAndExportCommands
+      (interp, "cindex::location::is::%s", locationIsCmdTable);
+
+   //-------------------------------------------------------------------------
+
+   Tcl_Namespace *rangeNs
+      = Tcl_CreateNamespace(interp, "cindex::range", NULL, NULL);
+   Tcl_CreateEnsemble(interp, "::cindex::range", rangeNs, 0);
+   Tcl_Export(interp, cindexNs, "range", 0);
+
+   static Command rangeCmdTable[] = {
+      { "create",
+        rangeCreateObjCmd },
+      { "end",
+        rangeToLocationObjCmd,
+        clang_getRangeEnd },
+      { "equal",
+        rangeEqualObjCmd },
+      { "null",
+        rangeNullObjCmd },
+      { "start",
+        rangeToLocationObjCmd,
+        clang_getRangeStart },
+      { NULL }
+   };
+   createAndExportCommands(interp, "cindex::range::%s", rangeCmdTable);
+
+   Tcl_Namespace *rangeIsNs
+      = Tcl_CreateNamespace(interp, "cindex::range::is", NULL, NULL);
+   Tcl_CreateEnsemble(interp, "::cindex::range::is", rangeIsNs, 0);
+   Tcl_Export(interp, rangeNs, "is", 0);
+
+   static Command rangeIsCmdTable[] = {
+      { "null",
+        rangeIsNullObjCmd },
+      { NULL }
+   };
+   createAndExportCommands(interp, "cindex::range::is::%s", rangeIsCmdTable);
 
    //-------------------------------------------------------------------------
 
