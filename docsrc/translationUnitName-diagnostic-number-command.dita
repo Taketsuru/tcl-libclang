@@ -29,18 +29,26 @@
 ==============================================================================
 -->
 
-<reference id='ref.command.indexName.translationUnit'>
-  <title>indexName translationUnit</title>
-  <shortdesc>create a translation unit</shortdesc>
+<reference id='translationUnitName-diagnostic-number-command'>
+  <title><varname>translationUnitName</varname> diagnostic number</title>
+  <shortdesc>get the number of diagnostics in a translation unit</shortdesc>
   <refbody>
-    <section>
-      <title>Descriptions</title>
-      <p>
-	<varname>indexName</varname>
-	<cmdname>translationUnit</cmdname> defines
-	<varname>translationUnitName</varname>.  The newly defined
-	command is used to query properties of a translation unit.
-      </p>
-    </section>
+
+      <section>
+	<title>Synopsis</title>
+	<codeblock>
+	  <varname>translationUnitName</varname> diagnostic number
+	</codeblock>
+      </section>
+
+      <section>
+	<title>Description</title>
+	<p>
+	  <codeph><varname>translationUnitName</varname> diagnostic
+	  number</codeph> returns the number of diagnostics in
+	  <varname>translationUnitName</varname>.
+	</p>
+      </section>
+
   </refbody>
 </reference>

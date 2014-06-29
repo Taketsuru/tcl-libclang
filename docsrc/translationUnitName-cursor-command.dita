@@ -1,0 +1,116 @@
+<?xml version='1.0'?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "reference.dtd">
+
+<!--
+==============================================================================
+ Copyright (c) 2014 Taketsuru <taketsuru11@gmail.com>.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice,
+ this list of conditions and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
+ and/or other materials provided with the distribution.
+
+ THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND ANY
+ EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY
+ DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+==============================================================================
+-->
+
+<reference id='translationUnitName-cursor-command'>
+  <title>translationUnitName cursor</title>
+  <shortdesc>
+    This command gets a cursor pointing an AST node of a translation
+    unit.
+  </shortdesc>
+  <refbody>
+    <section>
+      <title>
+	Synopsis
+      </title>
+      <codeblock>
+	<varname>translationUnitName</varname> cursor
+	<varname>translationUnitName</varname> cursor
+	    -location <varname>sourceLocation</varname>
+	<varname>translationUnitName</varname> cursor
+	    -file <varname>filename</varname>
+	    -line <varname>line</varname>
+	    -column <varname>column</varname>
+	<varname>translationUnitName</varname> cursor
+	    -file <varname>filename</varname>
+	    -offset <varname>offset</varname>
+      </codeblock>
+    </section>
+
+    <section>
+      <title>Description</title>
+      <p>
+	If no arguments are given, the return value is a cursor pointing the
+	root node of <varname>translationUnitName</varname>.
+      </p>
+      <p>
+	Otherwise, the argument list specifies a location in
+	<varname>translationUnitName</varname>.  In this case, the
+	return value is a cursor pointing the most descendent AST node
+	spanning the specified location.  The argument list is one of
+	the following form:
+      </p>
+      <simpletable>
+	<strow>
+	  <stentry>
+	    <option>-location</option>
+	    <varname>sourceLocation</varname>
+	  </stentry>
+	  <stentry>
+	    <p>
+	      The location is <varname>sourceLocation</varname>.
+	    </p>
+	  </stentry>
+	</strow>
+	<strow>
+	  <stentry>
+	    <option>-file</option>
+	    <varname>filename</varname>
+	    <option>-line</option>
+	    <varname>line</varname>
+	    <option>-column</option>
+	    <varname>column</varname>
+	  </stentry>
+	  <stentry>
+	    <p>
+	      The location is at <varname>line</varname> and
+	      <varname>column</varname> in
+	      <varname>filename</varname>.
+	    </p>
+	  </stentry>
+	</strow>
+	<strow>
+	  <stentry>
+	    <option>-file</option>
+	    <varname>filename</varname>
+	    <option>-offset</option>
+	    <varname>offset</varname>
+	  </stentry>
+	  <stentry>
+	    <p>
+	      The location is at <varname>offset</varname> in
+	      <varname>filename</varname>.
+	    </p>
+	  </stentry>
+	</strow>
+      </simpletable>
+    </section>
+  </refbody>
+</reference>

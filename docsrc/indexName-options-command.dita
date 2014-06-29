@@ -1,0 +1,201 @@
+<?xml version='1.0'?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "reference.dtd">
+
+<!--
+==============================================================================
+ Copyright (c) 2014 Taketsuru <taketsuru11@gmail.com>.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice,
+ this list of conditions and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
+ and/or other materials provided with the distribution.
+
+ THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND ANY
+ EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY
+ DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+==============================================================================
+-->
+
+<reference id='indexName-options-command'>
+  <title>indexName options</title>
+  <shortdesc>
+    <codeph><varname>indexName</varname> options</codeph> gets / sets
+    options associated with an instance of
+    <varname>indexName</varname> command.
+  </shortdesc>
+  <refbody>
+
+    <section>
+      <title>Synopsis</title>
+      <codeblock>
+	<varname>indexName</varname> options
+	<varname>indexName</varname> options <option>-none</option>
+	<varname>indexName</varname> options
+	    [ <option>-backgroundIndexing</option>
+	    | <option>-backgroundEditing</option>
+	    | <option>-background</option> ] ...
+      </codeblock>
+    </section>
+
+    <section>
+      <title>Description</title>
+      <p>
+	Each instance created by <codeph><varname>indexName</varname>
+	translationUnit</codeph> has a set of options.  The options
+	control how translation units are parsed in the index.  This
+	command gets / sets the options set of
+	<varname>indexName</varname>.
+      </p>
+
+      <p>
+	There are three forms:
+      </p>
+      <p>
+	<simpletable>
+	  <strow>
+	    <stentry>
+	      <p>
+		<varname>indexName</varname> options
+	      </p>
+	    </stentry>
+	    <stentry>
+	      <p>
+		Return the list of options of
+		<varname>indexName</varname> if it's not empty.
+		Otherwise, return <option>-none</option>.
+	      </p>
+	    </stentry>
+	  </strow>
+	  <strow>
+	    <stentry>
+	      <p>
+		<varname>indexName</varname> options -none
+	      </p>
+	    </stentry>
+	    <stentry>
+	      <p>
+		Clear the options set of <varname>indexName</varname>
+		and return an empty string.
+	      </p>
+	    </stentry>
+	  </strow>
+	  <strow>
+	    <stentry>
+	      <p>
+		<varname>indexName</varname> options <varname>option</varname>
+	      </p>
+	    </stentry>
+	    <stentry>
+	      <p>
+		Replace the options set of <varname>indexName</varname>
+		with <varname>option</varname>... and return an empty
+		string.
+	      </p>
+	      <p>
+		<varname>option</varname> is one of the following:
+	      </p>
+	      <p>
+		<simpletable>
+		  <strow>
+		    <stentry>
+		      <p><option>-background</option></p>
+		    </stentry>
+		    <stentry>
+		      <p>
+			Run all the threads created by libclang at
+			background priority.  Setting this option is
+			equivalent to setting both
+			<option>-backgroundEditing</option> and
+			<option>-backgroundIndexing</option>.
+		      </p>
+		    </stentry>
+		  </strow>
+		  <strow>
+		    <stentry>
+		      <p><option>-backgroundEditing</option></p>
+		    </stentry>
+		    <stentry>
+		      <p>
+			Run threads created by libclang for editing at
+			background priority.
+		      </p>
+		    </stentry>
+		  </strow>
+		  <strow>
+		    <stentry>
+		      <p><option>-backgroundIndexing</option></p>
+		    </stentry>
+		    <stentry>
+		      <p>
+			Run threads created by libclang for indexing at
+			background priority.
+		      </p>
+		    </stentry>
+		  </strow>
+		</simpletable>
+	      </p>
+	    </stentry>
+	  </strow>
+	</simpletable>
+      </p>
+    </section>
+
+    <section>
+      <title>Examples</title>
+      <p>
+	Clear and get the options:
+	<codeblock>
+	  $ package require cindex
+	  1.0
+	  $ cindex::index myindex
+	  $ myindex options -none
+	  $ myindex options
+	  -none
+	  $
+	</codeblock>
+      </p>
+      <p>
+	Set and get the options:
+	<codeblock>
+	  $ package require cindex
+	  1.0
+	  $ cindex::index myindex
+	  $ myindex options -backgroundEditing -backgroundIndexing
+	  $ myindex options
+	  -background
+	</codeblock>
+	Note that the last value is <option>-background</option> since
+	setting both <option>-backgroundEditing</option> and
+	<option>-backgroundIndexing</option> is equivalent to
+	<option>-background</option>.
+      </p>
+    </section>
+
+    <section>
+      <title>See Also</title>
+      <p>
+	<xref keyref='index-command'/>
+      </p>
+    </section>
+
+  </refbody>
+</reference>
+
+<!--
+   Local Variables:
+   fill-column: 78
+   End:
+-->

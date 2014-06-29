@@ -31,8 +31,24 @@
 
 <map xml:lang="en">
   <title>Tcl language binding for libclang</title>
-  <topicref href="command-index.dita"/>
-  <topicref href="command-indexName-translationUnit.dita"/>
+  <topicref keys='index-command'
+	    href='index-command.dita'/>
+  <topicref keys='indexName-options-command'
+	    href='indexName-options-command.dita'/>
+  <topicref keys='indexName-translationUnit-command'
+	    href='indexName-translationUnit-command.dita'/>
+  <topicref keys='translationUnitName-cursor-command'
+	    href='translationUnitName-cursor-command.dita'/>
+  <topicref keys='translationUnitName-diagnostic-decode-command'
+	    href='translationUnitName-diagnostic-decode-command.dita'/>
+  <topicref keys='translationUnitName-diagnostic-format-command'
+	    href='translationUnitName-diagnostic-format-command.dita'/>
+  <topicref keys='translationUnitName-diagnostic-number-command'
+	    href='translationUnitName-diagnostic-number-command.dita'/>
+  <topicref keys='translationUnitName-isMultipleIncludeGuarded-command'
+	    href='translationUnitName-isMultipleIncludeGuarded-command.dita'/>
+  <topicref keys='translationUnitName-location-command'
+	    href='translationUnitName-location-command.dita'/>
 </map>
 
 <!--

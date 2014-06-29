@@ -1,0 +1,192 @@
+<?xml version='1.0'?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "reference.dtd">
+
+<!--
+==============================================================================
+ Copyright (c) 2014 Taketsuru <taketsuru11@gmail.com>.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice,
+ this list of conditions and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
+ and/or other materials provided with the distribution.
+
+ THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND ANY
+ EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY
+ DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+==============================================================================
+-->
+
+<reference id='indexName-translationUnit-command'>
+  <title>indexName translationUnit</title>
+  <shortdesc>
+    <codeph><varname>indexName</varname> translationUnit</codeph>
+    creates a command to query properties of a translation unit.
+  </shortdesc>
+  <refbody>
+
+    <section>
+      <title>Synopsis</title>
+      <codeblock>
+      	<varname>indexName</varname> translationUnit
+	    [<varname>options</varname>]
+	    [--]
+	    <varname>translationUnitName</varname>
+	    [<varname>compilersCommnadLineArg</varname>...]
+      </codeblock>
+    </section>
+
+    <section>
+      <title>Descriptions</title>
+      <p>
+	<codeph><varname>indexName</varname> translationUnit</codeph>
+	creates <varname>translationUnitName</varname>.  Use
+	<varname>translationUnitName</varname> to query properties of
+	a translation unit.
+      </p>
+
+      <p>
+	The main source file of the translation unit is specified in
+	one of two ways:
+	<simpletable>
+	  <strow>
+	    <stentry>
+	      <p><option>-sourceFile</option> <varname>filename</varname></p>
+	    </stentry>
+
+	    <stentry>
+	      <p>
+		The file name of the main source file follows the
+		option.
+	      </p>
+	    </stentry>
+
+	  </strow>
+	  <strow>
+	    <stentry>
+	      <p><varname>compilersCommandLineArg</varname> ...</p>
+	    </stentry>
+	    <stentry>
+	      <p>
+		The file name
+		of the main source file is specified in the same way as
+		compiler's command line.
+	      </p>
+	    </stentry>
+	  </strow>
+	</simpletable>
+      </p>
+
+      <p>
+	The following options are available:
+      </p>
+
+      <p>
+	<simpletable>
+	  <strow>
+	    <stentry>
+	      <p><option>-cacheCompletionResults</option></p>
+	    </stentry>
+	    <stentry>
+	      <p>
+		Cache code completion results.  This option adds
+		some overheads to reparse operation but enhances the
+		performance of code completion.
+	      </p>
+	    </stentry>
+	  </strow>
+	  <strow>
+	    <stentry>
+	      <p><option>-detailedPreprocessingRecord</option></p>
+	    </stentry>
+	    <stentry>
+	      <p>
+		Record macro definitions and instantiations.  This enables
+		querying such properties.  This option increases memory
+		footprint and time necessary to parse the translation unit.
+	      </p>
+	    </stentry>
+	  </strow>
+	  <strow>
+	    <stentry>
+	      <p><option>-forSerialization</option></p>
+	    </stentry>
+	    <stentry>
+	      <p>
+		Prepare to do
+		<codeph><varname>translationUnitName</varname>
+		save</codeph>
+	      </p>
+	    </stentry>
+	  </strow>
+	  <strow>
+	    <stentry>
+	      <p><option>-includeBriefCommentsInCodeCompletion</option></p>
+	    </stentry>
+	    <stentry>
+	      <p>
+		Include brief documentations in comments into the set
+		of code completions.
+	      </p>
+	    </stentry>
+	  </strow>
+	  <strow>
+	    <stentry>
+	      <p><option>-incomplete</option></p>
+	    </stentry>
+	    <stentry>
+	      <p>
+		Suppress semantic analysis performed at the end of
+		translation unit.  This is useful when parsing a
+		header file to generate precompiled header.
+	      </p>
+	    </stentry>
+	  </strow>
+	  <strow>
+	    <stentry>
+	      <p><option>-parseLater</option></p>
+	    </stentry>
+	    <stentry>
+	      <p>
+		Don't parse the translation unit.  To parse the
+		created translation unit, do
+		<codeph><varname>translationUnitName</varname>
+		reparse</codeph>
+	      </p>
+	    </stentry>
+	  </strow>
+	  <strow>
+	    <stentry>
+	      <p><option>-precompiledPreamble</option></p>
+	    </stentry>
+	    <stentry>
+	      <p>
+		Load the implicit precompiled header that contains all
+		of the initial includes at the top of the main file if
+		available.  If it is not available, build it.
+	      </p>
+	    </stentry>
+	  </strow>
+	</simpletable>
+      </p>
+    </section>
+  </refbody>
+</reference>
+
+<!--
+   Local Variables:
+   fill-column: 78
+   End:
+-->

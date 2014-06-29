@@ -26,48 +26,8 @@
 #
 # ============================================================================
 
-TCLSH		= /usr/local/bin/tclsh8.6
-CPPFLAGS	= -DBIST \
-		-I /usr/local/include \
-		-I /usr/local/include/tcl8.6 \
-		-I /usr/local/llvm34/include
-CFLAGS		= -Wall -g -fPIC
-LDLIBS		= -L /usr/local/lib -ltcl86 \
-		  -L /usr/local/llvm34/lib -lclang
-DITAOTI		= ../DITA-OT1.8.4
-ANT		= $(DITAOTI)/tools/ant/bin/ant
-ANT_OPTS	= -Xmx512m -Djavax.xml.transform.TransformerFactory=net.sf.saxon.TransformerFactoryImpl
-ANT_HOME	= $(DITAOTI)/tools/ant
-CLASSPATH	= $(DITAOTI)/lib/saxon/saxon9-dom.jar:$(DITAOTI)/lib/saxon/saxon9.jar:$(DITAOTI)/lib/xml-apis.jar:$(DITAOTI)/lib/xercesImpl.jar:$(DITAOTI)/lib/icu4j.jar:$(DITAOTI)/lib/resolver.jar:$(DITAOTI)/lib/commons-codec-1.4.jar:$(DITAOTI)/lib:$(DITAOTI)/lib/dost.jar
+default:
+	(cd ..; $(MAKE) $(MAKEFLAGS) default)
 
-default: lib/libcindex.so doc/refman/refman.html
-
-obj/libcindex.o: src/libcindex.c
-	mkdir -p obj
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o obj/libcindex.o src/libcindex.c
-
-lib/libcindex.so: obj/libcindex.o
-	mkdir -p lib
-	$(CC) -shared -o lib/libcindex.so obj/libcindex.o $(LDLIBS)
-	chmod -x lib/libcindex.so
-
-REFMAN_SRCS = \
-	docsrc/refman.ditamap \
-	docsrc/index-command.dita \
-	docsrc/indexName-translationUnit-command.dita
-
-doc/refman/refman.html: $(REFMAN_SRCS)
-	CLASSPATH="$(CLASSPATH)" \
-	ANT_OPTS="$(ANT_OPTS)" \
-	ANT_HOME="$(ANT_HOME)" \
-		$(ANT) -f build-dita.xml \
-			-Ddita.dir=$(DITAOTI) \
-			-Dargs.input=docsrc/refman.ditamap \
-			-Dtranstype=xhtml \
-			-Doutput.dir=doc/refman
-
-clean:
-	rm -rf obj doc man lib temp
-
-test:	lib/libcindex.so
-	TCLLIBPATH=lib $(TCLSH) src/cindex.test
+%:
+	(cd ..; $(MAKE) $(MAKEFLAGS) $@)

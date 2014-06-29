@@ -1,7 +1,19 @@
 <?xml version="1.0"?>
 <locatingRules xmlns="http://thaiopensource.com/ns/locating-rules/1.0">
-  <uri resource="command-indexName-translationUnit.dita" uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
-  <uri resource="command-indexName-options.dita" uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
-  <uri resource="refman.docbook" uri="../../docbook-5.0/rng/docbook.rnc"/>
-  <uri resource="command-index.dita" uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
+  <uri resource="translationUnitName-location-command.dita"
+       uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
+  <uri resource="translationUnitName-isMultipleIncludeGuarded-command.dita"
+       uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
+  <uri resource="translationUnitName-diagnostic-number-command.dita"
+       uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
+  <uri resource="translationUnitName-diagnostic-format-command.dita"
+       uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
+  <uri resource="translationUnitName-diagnostic-decode-command.dita"
+       uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
+  <uri resource="translationUnitName-cursor-command.dita"
+       uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
+  <uri resource="indexName-options-command.dita"
+       uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
+  <uri resource="index-command.dita"
+       uri="../../DITA-OT1.8.4/rnc/reference/reference.rnc"/>
 </locatingRules>

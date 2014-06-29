@@ -29,36 +29,39 @@
 ==============================================================================
 -->
 
-<reference id='ref.command.index'>
-  <title><cmdname>index</cmdname></title>
+<reference id='index-command'>
+  <title>index</title>
   <shortdesc>
-    The command to create a context for parsing translation units
+    <codeph>index</codeph> creates a context for parsing translation units.
   </shortdesc>
   <refbody>
+
     <section>
       <title>Synopsis</title>
       <codeblock>
-	"<cmdname>cindex::index</cmdname>" {
-		"-displayDiagnostics" | "-excludeDeclFromPCH"
-		}
+	cindex::index [-displayDiagnostics] [-excludeDeclFromPCH]
       </codeblock>
     </section>
 
     <section>
       <title>Description</title>
       <p>
-	<cmdname>index</cmdname> creates a Tcl command named
+	<codeph>index</codeph> creates a Tcl command named
 	<varname>indexName</varname>.  The created command is used to
 	parse translation units. See <xref
-	href='command-indexName-translationUnit.dita'/>.
+	keyref='indexName-translationUnit-command'/>.
       </p>
 
       <p>
 	The following options are available:
+      </p>
+      <p>
 	<simpletable>
 
 	  <strow>
-	    <stentry><option>-displayDiagnostics</option></stentry>
+	    <stentry>
+	      <p><option>-displayDiagnostics</option></p>
+	    </stentry>
 	    <stentry>
 		<p>Print diagnostic messages generated during parsing
 		translation units to the standard output.</p>
@@ -66,7 +69,9 @@
 	  </strow>
 
 	  <strow>
-	    <stentry><option>-excludeDeclarationsFromPCH</option></stentry>
+	    <stentry>
+	      <p><option>-excludeDeclarationsFromPCH</option></p>
+	    </stentry>
 	    <stentry>
 	      <p>Do not allow enumeration of declarations outside the
 	      translation unit.  Thus declarations in any precompiled
@@ -80,24 +85,35 @@
 
     <section>
       <title>Examples</title>
-      <p>Create <cmdname>myindex</cmdname>, parse
-      <filepath>test.c</filepath>, and print enum declarations in it:
-	  <codeblock>
-	    $ package require cindex
-	    1.0
-	    $ cindex::index myindex
-	    $ myindex translationUnit mytu -I /usr/local/include test.c
-	    $ cindex::foreachChild child [mytu cursor] {
-	        if {[lindex $child 0] eq "enumDecl"} {
-	            set location [cindex::cursor location]
-	            set locString [cindex::location presumedLocation $location]
-	            puts "enumdecl at $locString"
-	        }
-            }
-            enumdecl at 
-            enumdecl at 
-            $
-	  </codeblock></p>
+      <p>
+	Create <codeph>myindex</codeph>, parse
+	<filepath>test.c</filepath>, and print all the enum
+	declarations in <filepath>test.c</filepath>:
+      </p>
+      <p>
+	<codeblock>
+	  $ package require cindex
+	  1.0
+	  $ cindex::index myindex
+	  $ myindex translationUnit mytu -I /usr/local/include test.c
+	  $ cindex::foreachChild child [mytu cursor] {
+	      if {[lindex $child 0] eq "enumDecl"} {
+	        set location [cindex::cursor location]
+	        set locString [cindex::location presumedLocation $location]
+	        puts "enumdecl at $locString"
+	      }
+          }
+          enumdecl at 
+          enumdecl at 
+          $
+	</codeblock>
+      </p>
     </section>
   </refbody>
 </reference>
+
+<!--
+   Local Variables:
+   fill-column: 78
+   End:
+-->

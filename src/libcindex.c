@@ -4036,12 +4036,12 @@ static int tuInstanceObjCmd(ClientData     clientData,
                                           objv + subcommand_ix);
 }
 
-//------------------------------------------- index instance's options command
+//-------------------------------------------------- indexName options command
 
-static int indexOptionsObjCmd(ClientData     clientData,
-                              Tcl_Interp    *interp,
-                              int            objc,
-                              Tcl_Obj *const objv[])
+static int indexNameOptionsObjCmd(ClientData     clientData,
+                                  Tcl_Interp    *interp,
+                                  int            objc,
+                                  Tcl_Obj *const objv[])
 {
    static BitMask options[] = {
       { "-backgroundIndexing" },
@@ -4091,7 +4091,7 @@ static int indexOptionsObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
-//----------------------------------- index instance's translationUnit command
+//------------------------------------------ indexName translationUnit command
 
 enum {
    parseOptions_parseLater,
@@ -4120,10 +4120,10 @@ static const char *parseOptions[] = {
 static const char * const *parseFlags
   = &parseOptions[parseOptions_firstFlag];
 
-static int indexTranslationUnitObjCmd(ClientData     clientData,
-                                      Tcl_Interp    *interp,
-                                      int            objc,
-                                      Tcl_Obj *const objv[])
+static int indexNameTranslationUnitObjCmd(ClientData     clientData,
+                                          Tcl_Interp    *interp,
+                                          int            objc,
+                                          Tcl_Obj *const objv[])
 {
    enum {
       command_ix,
@@ -4246,12 +4246,12 @@ static int indexTranslationUnitObjCmd(ClientData     clientData,
    return TCL_ERROR;
 }
 
-//----------------------------------------------------- index instance command
+//---------------------------------------------------------- indexName command
 
-static int indexInstanceObjCmd(ClientData     clientData,
-                               Tcl_Interp    *interp,
-                               int            objc,
-                               Tcl_Obj *const objv[])
+static int indexNameObjCmd(ClientData     clientData,
+                           Tcl_Interp    *interp,
+                           int            objc,
+                           Tcl_Obj *const objv[])
 {
    enum {
       command_ix,
@@ -4266,9 +4266,9 @@ static int indexInstanceObjCmd(ClientData     clientData,
 
    static Command commands[] = {
       { "options",
-        indexOptionsObjCmd },
+        indexNameOptionsObjCmd },
       { "translationUnit",
-        indexTranslationUnitObjCmd },
+        indexNameTranslationUnitObjCmd },
       { NULL }
    };
 
@@ -4793,7 +4793,7 @@ static int indexObjCmd(ClientData     clientData,
    IndexInfo *info = createIndexInfo(interp, index);
 
    Tcl_CreateObjCommand(interp, commandName,
-                        indexInstanceObjCmd, info, indexDeleteProc);
+                        indexNameObjCmd, info, indexDeleteProc);
 
    return TCL_OK;
 

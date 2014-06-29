@@ -1,0 +1,172 @@
+<?xml version='1.0'?>
+<!DOCTYPE reference PUBLIC "-//OASIS//DTD DITA Reference//EN" "reference.dtd">
+
+<!--
+==============================================================================
+ Copyright (c) 2014 Taketsuru <taketsuru11@gmail.com>.
+ All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without
+ modification, are permitted provided that the following conditions are met:
+
+ 1. Redistributions of source code must retain the above copyright notice,
+ this list of conditions and the following disclaimer.
+
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+ this list of conditions and the following disclaimer in the documentation
+ and/or other materials provided with the distribution.
+
+ THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND ANY
+ EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY
+ DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+==============================================================================
+-->
+
+<reference id='translationUnitName-diagnostic-format-command'>
+  <title>translationUnitName diagnostic format</title>
+  <shortdesc>get a human-readable representation of a diagnostic</shortdesc>
+  <refbody>
+    <section>
+      <title>Synopsis</title>
+      <codeblock>
+	<varname>translationUnitName</varname> diagnostic format
+	    <varname>index</varname>
+	<varname>translationUnitName</varname> diagnostic format
+	    [ <varname>option</varname> ] ... <varname>index</varname>
+      </codeblock>
+    </section>
+
+    <section>
+      <title>Description</title>
+      <p>
+	<varname>translationUnitName</varname> diagnostic format
+	formats <varname>index</varname>-th diagnostic of
+	<varname>translationUnitName</varname> in a manner that
+	suitable for display.  <varname>index</varname> of 0 formats
+	the first diagnostic.
+      </p>
+      <p>
+	The optional argument list has three forms:
+	<simpletable>
+	  <strow>
+	    <stentry>empty</stentry>
+	    <stentry>
+	      <p>
+		The command formats a diagnostic in a manner that closely
+		mimics the behavior of clang compiler.
+	      </p>
+	    </stentry>
+	  </strow>
+	  <strow>
+	    <stentry><option>-none</option></stentry>
+	    <stentry>
+	      <p>
+		The command formats a diagnostic without the effects of any
+		options.
+	      </p>
+	    </stentry>
+	  </strow>
+	  <strow>
+	    <stentry><varname>option</varname>...</stentry>
+	    <stentry>
+	      <p>
+		The following options are available:
+	      </p>
+	      <p>
+		<simpletable>
+		  <strow>
+		    <stentry><option>-displaySourceLocation</option></stentry>
+		    <stentry>
+		      <p>
+			Display the location of the diagnostic.  The
+			formatted string will be prefixed by the file name,
+			the line number to which the diagnostic refers.
+		      </p>
+		      <p>
+			This option corresponds to the clang flag
+			<option>-fshow-source-location</option>.
+		      </p>
+		    </stentry>
+		  </strow>
+		  <strow>
+		    <stentry><option>-displayColumn</option></stentry>
+		    <stentry>
+		      <p>
+			Display the column number to which the diagnostic
+			refers.  This option implies
+			<option>-displaySourceLocation</option>.
+		      </p>
+		      <p>
+			This option corresponds to the clang flag
+			<option>-fshow-column</option>.
+		      </p>
+		    </stentry>
+		  </strow>
+		  <strow>
+		    <stentry><option>-displaySourceRanges</option></stentry>
+		    <stentry>
+		      <p>
+			Display the machine-parsable source range to which
+			diagnostic refers.  This option implies
+			<option>-displaySourceLocation</option>.
+		      </p>
+		      <p>
+			This option corresponds to the clang flag
+			<option>-fdiagnostics-print-source-range-info</option>.
+		      </p>
+		    </stentry>
+		  </strow>
+		  <strow>
+		    <stentry><option>-displayOption</option></stentry>
+		    <stentry>
+		      <p>
+			Display the option associated with this diagnostic.
+		      </p>
+		      <p>
+			This option corresponds to the clang flag
+			<option>-fdiagnostics-show-option</option>.
+		      </p>
+		    </stentry>
+		  </strow>
+		  <strow>
+		    <stentry><option>-displayCategoryId</option></stentry>
+		    <stentry>
+		      <p>
+			Display the category ID associated with the
+			diagnostic.
+		      </p>
+		      <p>
+			This option corresponds to the clang flag
+			<option>-fdiagnostics-show-category=id</option>.
+		      </p>
+		    </stentry>
+		  </strow>
+		  <strow>
+		    <stentry><option>-displayCategoryName</option></stentry>
+		    <stentry>
+		      <p>
+			Display the category name associated with the
+			diagnostic.
+		      </p>
+		      <p>
+			This option corresponds to the clang flag
+			<option>-fdiagnostics-show-category=name</option>.
+		      </p>
+		    </stentry>
+		  </strow>
+		</simpletable>
+	      </p>
+	    </stentry>
+	  </strow>
+	</simpletable>
+      </p>
+    </section>
+  </refbody>
+</reference>
