@@ -53,8 +53,14 @@ lib/libcindex.so: obj/libcindex.o
 
 REFMAN_SRCS = \
 	docsrc/refman.ditamap \
-	docsrc/index-command.dita \
-	docsrc/indexName-translationUnit-command.dita
+	docsrc/indexName-options-command.dita \
+	docsrc/indexName-translationUnit-command.dita \
+	docsrc/translationUnitName-cursor-command.dita \
+	docsrc/translationUnitName-diagnostic-decode-command.dita \
+	docsrc/translationUnitName-diagnostic-format-command.dita \
+	docsrc/translationUnitName-diagnostic-number-command.dita \
+	docsrc/translationUnitName-isMultipleIncludeGuarded-command.dita \
+	docsrc/translationUnitName-location-command.dita
 
 doc/refman/refman.html: $(REFMAN_SRCS)
 	CLASSPATH="$(CLASSPATH)" \
