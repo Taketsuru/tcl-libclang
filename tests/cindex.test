@@ -196,6 +196,22 @@ test cindex_cursor-2.0 "cursor / numArguments/argument/arguments" \
     return
 }
 
+test cindex_cursor-3.0 "cursor / mangling" \
+    -constraints cindex0.28 \
+    -setup { setupCFile cursor-3.0.cxx } \
+    -cleanup { cleanupCFile cursor-3.0.cxx } \
+    -body {
+        cursor foreachChild [mytu cursor] c {
+            if {[lindex $c 0] eq "FunctionDecl"} {
+                set mangling [cursor mangling $c];
+                set spelling [cursor spelling $c];
+                if {$mangling eq $spelling} {
+                    ::error "unexpectedly unmangled";
+                }
+            }
+        }
+    }
+
 #---------------------------------------------------------------- foreachChild
 
 test foreachChild-1.0 "foreachChild / loop" \

@@ -6127,6 +6127,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "location",
         cursorToLocationObjCmd,
         clang_getCursorLocation },
+#if CINDEX_VERSION_MINOR >= 28
+      { "mangling",
+        cursorToStringObjCmd,
+        clang_Cursor_getMangling },
+#endif
       { "null",
         cursorNullObjCmd },
       { "numArguments",
