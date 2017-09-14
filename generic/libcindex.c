@@ -1760,7 +1760,7 @@ static void createCXTypeTable(void)
    Tcl_IncrRefCount(typeKindValues);
 }
 
-static Tcl_Obj *newCXTypeObj(CXType type)
+static Tcl_Obj *newTypeObj(CXType type)
 {
    Tcl_Obj *kind = Tcl_NewIntObj(type.kind);
    Tcl_IncrRefCount(kind);
@@ -2249,7 +2249,7 @@ static int typeToTypeObjCmd(ClientData     clientData,
    }
 
    CXType   result    = ((CXType (*)(CXType))clientData)(type);
-   Tcl_Obj *resultObj = newCXTypeObj(result);
+   Tcl_Obj *resultObj = newTypeObj(result);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
@@ -2289,7 +2289,7 @@ static int typeUnsignedToTypeObjCmd(ClientData     clientData,
    typedef CXType (*ProcType)(CXType, unsigned);
 
    CXType   result    = ((ProcType)clientData)(type, number);
-   Tcl_Obj *resultObj = newCXTypeObj(result);
+   Tcl_Obj *resultObj = newTypeObj(result);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
@@ -3207,7 +3207,7 @@ static int cursorToTypeObjCmd(ClientData     clientData,
    }
 
    CXType   result    = ((CXType (*)(CXCursor))clientData)(cursor);
-   Tcl_Obj *resultObj = newCXTypeObj(result);
+   Tcl_Obj *resultObj = newTypeObj(result);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
