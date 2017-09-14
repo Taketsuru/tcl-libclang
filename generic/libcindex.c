@@ -5560,7 +5560,7 @@ int Cindex_Init(Tcl_Interp *interp)
       Tcl_DecrRefCount(value);
    }
 
-   Tcl_PkgProvide(interp, "cindex", "1.0");
+   Tcl_PkgProvide(interp, "cindex", PACKAGE_VERSION);
 
    return TCL_OK;
 }
