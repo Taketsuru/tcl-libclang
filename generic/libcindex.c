@@ -6368,6 +6368,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "fieldDeclBitWidth",
         cursorToIntObjCmd,
         clang_getFieldDeclBitWidth },
+#if CINDEX_VERSION_MINOR >= 33
+      { "hasAttrs",
+        cursorToBoolObjCmd,
+        clang_Cursor_hasAttrs },
+#endif
       { "hash",
         cursorToUnsignedObjCmd,
         clang_hashCursor },

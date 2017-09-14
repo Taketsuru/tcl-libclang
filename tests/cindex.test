@@ -103,6 +103,9 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
     cursor displayName $root
     cursor equal $root $root
     cursor extent $root
+    if {[::tcltest::testConstraint cindex0.33]} {
+        cursor hasAttrs $root
+    }
     cursor hash $root
     cursor IBOutletCollectionType $root
     if {[::tcltest::testConstraint cindex0.30]} {
