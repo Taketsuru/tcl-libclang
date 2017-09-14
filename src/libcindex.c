@@ -3101,7 +3101,7 @@ static int tuDiagnosticDecodeObjCmd(ClientData     clientData,
    TUInfo *info = (TUInfo *)clientData;
 
    unsigned numDiags = clang_getNumDiagnostics(info->translationUnit);
-   if (0 < index || numDiags <= index) {
+   if (0 > index || numDiags <= index) {
       Tcl_SetObjResult(interp,
                        Tcl_ObjPrintf("index %d is out of range", index));
       return TCL_ERROR;
