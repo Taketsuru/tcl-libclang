@@ -30,6 +30,9 @@
 #include <tcl.h>
 #include <tclTomMath.h>
 #include <clang-c/Index.h>
+#if CINDEX_VERSION_MINOR >= 25
+#include <clang-c/Documentation.h>
+#endif
 
 #include <assert.h>
 #include <inttypes.h>
