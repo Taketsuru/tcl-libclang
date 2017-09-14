@@ -304,14 +304,20 @@ gdb:
 	$(TCLSH_ENV) gdb $(TCLSH_PROG) $(SCRIPT)
 
 VALGRINDARGS =	--tool=memcheck --num-callers=8 --leak-resolution=high \
-		--leak-check=yes --show-reachable=yes -v
+		--leak-check=yes --show-reachable=yes -v --trace-children=yes --trace-children-skip=/bin/*
 
 valgrind: binaries libraries
-	$(TCLSH_ENV) valgrind $(VALGRINDARGS) $(TCLSH_PROG) \
-		`@CYGPATH@ $(srcdir)/tests/all.tcl` $(TESTFLAGS)
+	COMPILE_FLAGS="$(COMPILE_FLAGS)" \
+	CLANG_BUILTIN_HEADER_INCLUDE_DIR="$(CLANG_BUILTIN_HEADER_INCLUDE_DIR)" \
+	$(TCLSH_ENV) $(PKG_ENV) valgrind $(VALGRINDARGS) $(TCLSH_PROG) \
+		`@CYGPATH@ $(srcdir)/tests/all.tcl` $(TESTFLAGS) \
+		-load "package ifneeded ${PACKAGE_NAME} ${PACKAGE_VERSION} \
+			[list load `@CYGPATH@ $(PKG_LIB_FILE)` $(PACKAGE_NAME)]"
 
 valgrindshell: binaries libraries
-	$(TCLSH_ENV) valgrind $(VALGRINDARGS) $(TCLSH_PROG) $(SCRIPT)
+	COMPILE_FLAGS="$(COMPILE_FLAGS)" \
+	CLANG_BUILTIN_HEADER_INCLUDE_DIR="$(CLANG_BUILTIN_HEADER_INCLUDE_DIR)" \
+	$(TCLSH_ENV) valgrind $(VALGRINDARGS) rlwrap $(TCLSH_PROG) $(SCRIPT)
 
 depend:
 
@@ -504,3 +510,19 @@ uninstall-binaries:
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
 .NOEXPORT:
+
+# Run this script in clang repository to see differences between API versions.
+# Generate a series of git diff rev1 rev2 -- include/clang-c/Index.h commands
+# and runs them.
+cindex-api-changes: SHELL:=/bin/bash
+cindex-api-changes:
+	test -d "$(CLANG_REPOSITORY)" || { \
+	    echo "Please, set CLANG_REPOSITORY to the directory containing the clang repository"; \
+	    exit 1; \
+	}; \
+	cd "$(CLANG_REPOSITORY)"; \
+	revs="$$(git log -G'CINDEX_VERSION_(MINOR|MAJOR)' --format=format:%h -- include/clang-c/Index.h)"; \
+	paste <(echo "$$revs" | tail --lines=+2) <(echo "$$revs" | head -n -1) | \
+	    tac | \
+	    sed -e 's|^|git diff |' -e 's|$$| -- include/clang-c/Index.h|' | \
+	    sh
