@@ -357,7 +357,37 @@ test translationUnitNameCursor-1.0 \
     return [lindex $root 0]
 } -result TranslationUnit
 
-#-------------------------------------- <translation unit instance> diagnostic
+#-------------------------------------- <translation unit instance> inclusions
+
+test translationUnitInclusions-0.0 "cursor / inclusions" \
+    -constraints cindex0.13 \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+    -body {
+        # Check that the source is the bottom of the stack for all inclusions.
+        # Make sure Index.h is included.
+        set topfn ""
+        set includes {};
+        mytu inclusions {fn fs} {
+            lappend includes $fn;
+            if {0 == [llength $fs]} {
+                set topfn [file normalize $fn];
+            } else {
+                lassign [location fileLocation [lindex $fs 0]] lfn;
+                if {$topfn ne $lfn} {
+                    error "invalid include stack bottom: \"$lfn\" != \"$topfn\""
+                }
+            }
+        }
+        set found 0
+        foreach inc $includes {
+            if {[string match "*/clang-c/Index.h" $inc]} {
+                set found 1;
+                break;
+            }
+        }
+        return $found
+    } -result 1
 
 #-------------------------------------- <translation unit instance> diagnostic
 

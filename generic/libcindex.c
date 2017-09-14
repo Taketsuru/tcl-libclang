@@ -334,6 +334,29 @@ static Tcl_Obj *newLayoutLongLongObj(long long value)
    return resultObj;
 }
 
+//---------------------------------------------------------------------- visit
+
+enum {
+   TCL_RECURSE = 5,
+};
+
+typedef struct VisitInfo {
+   Tcl_Interp  *interp;
+   Tcl_Obj    **variableNames;
+   int          numVariables;
+   Tcl_Obj     *scriptObj;
+   int          returnCode;
+   void        *clientData;
+} VisitInfo;
+
+static int recurseObjCmd(ClientData     clientData,
+                         Tcl_Interp    *interp,
+                         int            objc,
+                         Tcl_Obj *const objv[])
+{
+   return TCL_RECURSE;
+}
+
 //---------------------------------------------------------------------- enum
 
 typedef struct EnumConsts
@@ -3696,6 +3719,180 @@ static int tuDiagnosticObjCmd(ClientData     clientData,
                                           objv + subcommand_ix);
 }
 
+//------------------------------------------------- tuInclusionsHelper command
+
+typedef struct InclusionsInfo {
+   unsigned    maxDepth;        /* Don't eval after this depth. */
+} InclusionsInfo;
+
+static void tuInclusionsHelper(CXFile            includedFile,
+                               CXSourceLocation *inclusionStack,
+                               unsigned          depth,
+                               CXClientData      clientData)
+{
+   int status = TCL_OK;
+
+   struct VisitInfo *visitInfo = (VisitInfo *)clientData;
+   struct InclusionsInfo *inclusionsInfo = (InclusionsInfo *)visitInfo->clientData;
+
+   /*
+    * Return value does not drive the recursion, as is the case with
+    * clang_visitChildren.  Use visitInfo to keep recursion state.
+    */
+   switch (visitInfo->returnCode) {
+   case TCL_OK:
+   case TCL_RECURSE:
+      /* Evaluate the script */
+      break;
+
+   case TCL_CONTINUE:
+      if(depth > inclusionsInfo->maxDepth) {
+         /* Do not recurse deeper than maxDepth. */
+         return;
+      } else if(depth <= inclusionsInfo->maxDepth) {
+         /* Keep recursing normally once out of the subtree. */
+         inclusionsInfo->maxDepth = 0;
+         visitInfo->returnCode = TCL_OK;
+      }
+      break;
+
+   default:
+      /* Ignore till the end for TCL_BREAK, TCL_ERROR, etc. */
+      return;
+   }
+
+
+   Tcl_Obj *filenameVarName = visitInfo->variableNames[0];
+   Tcl_Obj *stackVarName = visitInfo->variableNames[1];
+   Tcl_Obj *filenameObj = NULL;
+   Tcl_Obj *stackObj = NULL;
+
+   /* File name. */
+   CXString filename = clang_getFileName(includedFile);
+   filenameObj = convertCXStringToObj(filename);
+   Tcl_IncrRefCount(filenameObj);
+   if (Tcl_ObjSetVar2(visitInfo->interp, filenameVarName,
+                      NULL, filenameObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   /* Stack.  Grows to the right (lappend).*/
+   Tcl_Obj **elms = (Tcl_Obj **)Tcl_Alloc(depth * sizeof(Tcl_Obj *));
+   for (int i = 0; i < depth; i++) {
+      elms[depth - i - 1] = newLocationObj(inclusionStack[i]);
+   }
+   stackObj = Tcl_NewListObj(depth, elms);
+   Tcl_Free((char *)elms);
+   Tcl_IncrRefCount(stackObj);
+   if (Tcl_ObjSetVar2(visitInfo->interp, stackVarName,
+                      NULL, stackObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
+
+cleanup:
+   if (filenameObj) {
+      Tcl_DecrRefCount(filenameObj);
+   }
+   if (stackObj) {
+      Tcl_DecrRefCount(stackObj);
+   }
+
+   switch (status) {
+   case TCL_OK:
+   case TCL_RECURSE:
+      visitInfo->returnCode = status;
+      break;
+   case TCL_CONTINUE:
+      inclusionsInfo->maxDepth = depth;
+      visitInfo->returnCode = TCL_CONTINUE;
+      break;
+   case TCL_BREAK:
+      visitInfo->returnCode = TCL_BREAK;
+      break;
+   default:
+      visitInfo->returnCode = status;
+   }
+   return;
+}
+
+//----------------------------- translation unit instance's inclusions command
+
+static int tuInclusionsObjCmd(ClientData     clientData,
+                              Tcl_Interp    *interp,
+                              int            objc,
+                              Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      variableNames_ix,
+      script_ix,
+      nargs
+   };
+
+   Tcl_Obj *varNamesObj = NULL;
+   int status = TCL_OK;
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "{fileVarName filestackVarName} script");
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   int       numVars = 0;
+   Tcl_Obj **varNames = NULL;
+   varNamesObj = Tcl_DuplicateObj(objv[variableNames_ix]);
+   Tcl_IncrRefCount(varNamesObj);
+   status = Tcl_ListObjGetElements(interp, varNamesObj, &numVars, &varNames);
+   if (status != TCL_OK) {
+      goto cleanup;
+   } else if (numVars != 2) {
+      Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid loop variables: must be fileVarName filestackVarName", -1));
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   InclusionsInfo inclusionsInfo = {
+      .maxDepth         = 0,
+   };
+
+   VisitInfo visitInfo = {
+      .interp           = interp,
+      .variableNames    = varNames,
+      .numVariables     = numVars,
+      .scriptObj        = objv[script_ix],
+      .returnCode       = TCL_OK,
+      .clientData = (void *)&inclusionsInfo
+   };
+
+   clang_getInclusions(info->translationUnit, tuInclusionsHelper, &visitInfo);
+
+   /* Convert traversal-related return codes to TCL_OK. */
+   switch (visitInfo.returnCode) {
+   case TCL_OK:
+   case TCL_CONTINUE:
+   case TCL_RECURSE:
+   case TCL_BREAK:
+      status = TCL_OK;
+      break;
+   default:
+      /* Keep the interpreter's result */
+      status = visitInfo.returnCode;
+   }
+
+cleanup:
+   if (varNamesObj) {
+      Tcl_DecrRefCount(varNamesObj);
+   }
+
+   return status;
+}
+
 //--------------- translation unit instance's isMultipleIncludeGuarded command
 
 static int tuIsMultipleIncludeGuardedObjCmd(ClientData     clientData,
@@ -4223,6 +4420,8 @@ static int tuInstanceObjCmd(ClientData     clientData,
         tuCursorObjCmd },
       { "diagnostic",
         tuDiagnosticObjCmd },
+      { "inclusions",
+        tuInclusionsObjCmd },
       { "isMultipleIncludeGuarded",
         tuIsMultipleIncludeGuardedObjCmd },
       { "location",
@@ -4852,10 +5051,6 @@ static int rangeToLocationObjCmd(ClientData     clientData,
 
 //------------------------------------------------------- foreachChild command
 
-enum {
-   TCL_RECURSE = 5
-};
-
 struct ForeachChildInfo
 {
    Tcl_Interp *interp;
@@ -4954,14 +5149,6 @@ static int foreachChildObjCmd(ClientData     clientData,
    clang_visitChildren(cursor, foreachChildHelper, &visitInfo);
 
    return visitInfo.returnCode;
-}
-
-static int recurseObjCmd(ClientData     clientData,
-                         Tcl_Interp    *interp,
-                         int            objc,
-                         Tcl_Obj *const objv[])
-{
-   return TCL_RECURSE;
 }
 
 //-------------------------------------------------------------- index command
