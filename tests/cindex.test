@@ -221,6 +221,88 @@ test foreachChild-1.0 "foreachChild / loop" \
     return
 }
 
+test foreachChild-3.0 "cursor / foreachChild / continue" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set rootcursor [mytu cursor]
+    set cursors {}
+    foreachChild c $rootcursor {
+        lappend cursors $c;
+    }
+    set level 0;
+    set i 0;
+    foreachChild c $rootcursor {
+        set othercursor [lindex $cursors $i]
+        incr i;
+        set eq [cursor equal $c $othercursor]
+        if {!$eq} {
+            return "$c != $othercursor"
+        }
+        if {$level > 0} {
+            continue;
+        } else {
+            incr level
+            recurse
+        }
+    }
+    return
+}
+
+test foreachChild-4.0 "cursor / foreachChild / break" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set rootcursor [mytu cursor]
+    set cursors {}
+    foreachChild c $rootcursor {
+        lappend cursors $c;
+    }
+    set level 0;
+    set i 0;
+    foreachChild {c ac} $rootcursor {
+        if {[llength $ac] > 1} {
+            # Stop at first recursion.
+            break;
+        }
+        set othercursor [lindex $cursors $i]
+        incr i;
+        set eq [cursor equal $c $othercursor]
+        if {!$eq} {
+            return "$c != $othercursor"
+        }
+        recurse
+    }
+    return
+}
+
+test foreachChild-5.0 "cursor / foreachChild / recursebreak" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set rootcursor [mytu cursor]
+    set cursors {}
+    foreachChild c $rootcursor {
+        lappend cursors $c;
+    }
+    set level 0;
+    set i 0;
+    foreachChild {c ac} $rootcursor {
+        if {[llength $ac] > 1} {
+            # break to parent.
+            recursebreak;
+        }
+        set othercursor [lindex $cursors $i]
+        incr i;
+        set eq [cursor equal $c $othercursor]
+        if {!$eq} {
+            return "$c != $othercursor"
+        }
+        recurse
+    }
+    return
+}
+
 
 #----------------------------------------------------------------------- index
 
@@ -461,6 +543,20 @@ test translationUnitFindIncludes-0.0 "cursor / findIncludes" \
         expr {"clang-c/Index.h" in $includes}
     } -result 1
 
+test translationUnitFindIncludes-0.0 "cursor / findIncludes / break" \
+    -constraints cindex0.13 \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+    -body {
+        set includes {};
+        mytu findIncludes $fn {ifn isr} {
+            lappend includes $ifn;
+            break;
+        }
+        llength $includes
+    } -result 1
+
+
 #-------------------------------------- <translation unit instance> inclusions
 
 test translationUnitInclusions-0.0 "cursor / inclusions" \
@@ -491,6 +587,22 @@ test translationUnitInclusions-0.0 "cursor / inclusions" \
             }
         }
         return $found
+    } -result 1
+
+test translationUnitInclusions-0.0 "cursor / break" \
+    -constraints cindex0.13 \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+    -body {
+        # Check that the source is the bottom of the stack for all inclusions.
+        # Make sure Index.h is included.
+        set topfn ""
+        set includes {};
+        mytu inclusions {fn fs} {
+            lappend includes $fn;
+            break;
+        }
+        llength $includes
     } -result 1
 
 #------------------------------------- <translation unit instance> diagnostics

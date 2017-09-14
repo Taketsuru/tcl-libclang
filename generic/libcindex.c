@@ -341,6 +341,7 @@ static Tcl_Obj *newLayoutLongLongObj(long long value)
 
 enum {
    TCL_RECURSE = 5,
+   TCL_RECURSE_BREAK = 6
 };
 
 typedef struct VisitInfo {
@@ -358,6 +359,14 @@ static int recurseObjCmd(ClientData     clientData,
                          Tcl_Obj *const objv[])
 {
    return TCL_RECURSE;
+}
+
+static int recurseBreakObjCmd(ClientData     clientData,
+                              Tcl_Interp    *interp,
+                              int            objc,
+                              Tcl_Obj *const objv[])
+{
+   return TCL_RECURSE_BREAK;
 }
 
 //---------------------------------------------------------------------- enum
@@ -5478,6 +5487,17 @@ static enum CXChildVisitResult foreachChildHelper(CXCursor     cursor,
 
    VisitInfo *visitInfo = (VisitInfo *)clientData;
 
+   /*
+    *  CXChildVisit_Break breaks out of the traversal of current cursor, while
+    *  we often want to break out of the whole traversal.  Use TCL_BREAK break
+    *  for the latter (as it's natural to think of the recursive loop a
+    *  foreach of its linearization), but still support the former behaviour
+    *  with the custom return code TCL_RECURSE_BREAK.
+    */
+   if (visitInfo->returnCode == TCL_BREAK) {
+      return CXChildVisit_Break;
+   }
+
    Tcl_Obj *childVariableName = visitInfo->variableNames[0];
    childObj = newCursorObj(cursor);
    Tcl_IncrRefCount(childObj);
@@ -5512,10 +5532,13 @@ cleanup:
    case TCL_OK:
    case TCL_CONTINUE:
       return CXChildVisit_Continue;
-   case TCL_BREAK:
-      return CXChildVisit_Break;
    case TCL_RECURSE:
       return CXChildVisit_Recurse;
+   case TCL_RECURSE_BREAK:
+      return CXChildVisit_Break;
+   case TCL_BREAK:
+      visitInfo->returnCode = TCL_BREAK;
+      return CXChildVisit_Break;
    default:
       visitInfo->returnCode = status;
       return CXChildVisit_Break;
@@ -5578,6 +5601,12 @@ static int foreachChildObjCmd(ClientData     clientData,
    clang_visitChildren(cursor, foreachChildHelper, &visitInfo);
 
    status = visitInfo.returnCode;
+   switch (status) {
+   case TCL_BREAK:
+   case TCL_RECURSE_BREAK:
+      status = TCL_OK;
+      break;
+   }
 
 cleanup:
    if (varNamesObj) {
@@ -5952,6 +5981,8 @@ int Cindex_Init(Tcl_Interp *interp)
         indexObjCmd },
       { "recurse",
         recurseObjCmd },
+      { "recursebreak",
+        recurseBreakObjCmd },
       { NULL }
    };
    createAndExportCommands(interp, "cindex::%s", cmdTable);
