@@ -6814,6 +6814,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "functionTypeCallingConvention",
         typeToNamedValueObjCmd,
         &functionTypeCallingConvInfo },
+#if CINDEX_VERSION_MINOR >= 35
+      { "namedType",
+        typeToTypeObjCmd,
+        clang_Type_getNamedType },
+#endif
       { "numArgTypes",
         typeToIntObjCmd,
         clang_getNumArgTypes },
