@@ -608,6 +608,44 @@ test translationUnitNameCursor-1.0 \
     return [lindex $root 0]
 } -result TranslationUnit
 
+test translationUnitNameCursor-2.0 \
+    "<translation unit instance> cursor -location" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    set root [mytu cursor]
+    cursor foreachChild $root cx1 {}; # last child
+    set loc [cursor location $cx1];
+    set cx2 [mytu cursor -location $loc]
+    return [cursor equal $cx1 $cx2];
+} -result 1
+
+test translationUnitNameCursor-3.0 \
+    "<translation unit instance> cursor -file -line -column" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    set root [mytu cursor]
+    cursor foreachChild $root cx1 {}; # last child
+    set loc [cursor location $cx1];
+    lassign [location fileLocation $loc] fn ln col;
+    set cx2 [mytu cursor -file $fn -line $ln -column $col]
+    return [cursor equal $cx1 $cx2];
+} -result 1
+
+test translationUnitNameCursor-3.0 \
+    "<translation unit instance> cursor -offset" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    set root [mytu cursor]
+    cursor foreachChild $root cx1 {}; # last child
+    set loc [cursor location $cx1];
+    lassign [location fileLocation $loc] fn _ _ offset;
+    set cx2 [mytu cursor -file $fn -offset $offset]
+    return [cursor equal $cx1 $cx2];
+} -result 1
+
 #------------------------------------ <translation unit instance> findIncludes
 
 test translationUnitFindIncludes-0.0 "cursor / findIncludes" \

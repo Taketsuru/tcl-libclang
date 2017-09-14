@@ -3720,6 +3720,8 @@ static int tuCursorObjCmd(ClientData     clientData,
             return status;
          }
 
+         i++;
+
          break;
 
       case option_file:
@@ -3741,6 +3743,8 @@ static int tuCursorObjCmd(ClientData     clientData,
             goto invalid_location;
          }
 
+         i++;
+
          break;
 
       case option_line:
@@ -3759,7 +3763,7 @@ static int tuCursorObjCmd(ClientData     clientData,
                                            : "column number"));
             return TCL_ERROR;
          }
-         
+
          status = getUnsignedFromObj(interp, objv[i + 1],
                                      optionNumber == option_line
                                      ? &line
@@ -3767,6 +3771,8 @@ static int tuCursorObjCmd(ClientData     clientData,
          if (status != TCL_OK) {
             return status;
          }
+
+         i++;
 
          break;
 
@@ -3790,6 +3796,8 @@ static int tuCursorObjCmd(ClientData     clientData,
             return status;
          }
 
+         i++;
+
          break;
 
       default:
@@ -3805,6 +3813,7 @@ static int tuCursorObjCmd(ClientData     clientData,
       | (1 << option_line)
       | (1 << option_column);
    unsigned offset_form = (1 << option_file) | (1 << option_offset);
+   unsigned location_form = (1 << option_location);
 
    if (options_found == 0) {
 
@@ -3821,6 +3830,10 @@ static int tuCursorObjCmd(ClientData     clientData,
 
          location = clang_getLocationForOffset(info->translationUnit,
                                                file, offset);
+
+      } else if ((options_found & location_form) == location_form) {
+
+        // Location provided as argument.
 
       } else {
 
