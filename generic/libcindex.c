@@ -5477,8 +5477,12 @@ static int rangeToLocationObjCmd(ClientData     clientData,
 
 //------------------------------------------------------- foreachChild command
 
+typedef struct ForeachChildInfo {
+   Tcl_Obj    *ancestorStackObj;
+} ForeachChildInfo;
+
 static enum CXChildVisitResult foreachChildHelper(CXCursor     cursor,
-                                                  CXCursor     parent,
+                                                  CXCursor     parentCursor,
                                                   CXClientData clientData)
 {
    int status = TCL_OK;
@@ -5508,11 +5512,64 @@ static enum CXChildVisitResult foreachChildHelper(CXCursor     cursor,
    }
 
    if (visitInfo->numVariables == 2) {
-      Tcl_Obj *parentVariableName = visitInfo->variableNames[1];
-      parentObj = newCursorObj(parent);
-      Tcl_IncrRefCount(parentObj);
-      if (Tcl_ObjSetVar2(visitInfo->interp, parentVariableName,
-                         NULL, parentObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      ForeachChildInfo *foreachChildInfo =
+         (ForeachChildInfo *)visitInfo->clientData;
+      Tcl_Obj  *ancestorStackObj = foreachChildInfo->ancestorStackObj;
+      int       ancestorStackSize = 0;
+      Tcl_Obj **ancestorStack = NULL;
+      CXCursor  ancestorCursor;
+      int       i;
+
+      status = Tcl_ListObjGetElements(visitInfo->interp,
+                                      ancestorStackObj,
+                                      &ancestorStackSize, &ancestorStack);
+      if (status != TCL_OK) {
+         goto cleanup;
+      }
+      for (i = ancestorStackSize - 1; i >= 0; i--) {
+         status = getCursorFromObj(visitInfo->interp, ancestorStack[i],
+                                   &ancestorCursor);
+         if (status != TCL_OK) {
+            goto cleanup;
+         }
+
+         if (clang_equalCursors(ancestorCursor, parentCursor) != 0) {
+            break;
+         }
+      }
+
+      /*
+       * Not a sibling (i would be == to ancestorStackSize - 1): either
+       * recursing or rewinding.
+       */
+      if (i < 0 || i < ancestorStackSize - 1) {
+         /* We are going to modify the list, duplicate if shared. */
+         if (Tcl_IsShared(ancestorStackObj)) {
+            ancestorStackObj = Tcl_DuplicateObj(ancestorStackObj);
+            foreachChildInfo->ancestorStackObj = ancestorStackObj;
+         }
+
+         if (i < 0) {
+            /* Not found: we are recursing. */
+            parentObj = newCursorObj(parentCursor);
+            Tcl_IncrRefCount(parentObj);
+            status = Tcl_ListObjAppendElement(visitInfo->interp, ancestorStackObj,
+                                              parentObj);
+         } else {
+            /* Found: remove rewinded ancestors. */
+            status = Tcl_ListObjReplace(visitInfo->interp, ancestorStackObj,
+                                        /* (size-1) - (i+1) */
+                                        i+1, ancestorStackSize - i,
+                                        0, NULL);
+         }
+      }
+      if (status != TCL_OK) {
+         goto cleanup;
+      }
+
+      Tcl_Obj *ancestorsVariableName = visitInfo->variableNames[1];
+      if (Tcl_ObjSetVar2(visitInfo->interp, ancestorsVariableName,
+                         NULL, ancestorStackObj, TCL_LEAVE_ERR_MSG) == NULL) {
          status = TCL_ERROR;
          goto cleanup;
       }
@@ -5567,6 +5624,7 @@ static int foreachChildObjCmd(ClientData     clientData,
    Tcl_Obj *varNameObjArg = NULL;
    Tcl_Obj *cursorObjArg = NULL;
    Tcl_Obj *varNamesObj = NULL;
+   Tcl_Obj *ancestorStackObj = NULL;
    int status = TCL_OK;
 
    switch ((enum ForeachChildSyntax)clientData) {
@@ -5615,12 +5673,22 @@ static int foreachChildObjCmd(ClientData     clientData,
       goto cleanup;
    }
 
+   if (numVars == 2) {
+      ancestorStackObj = Tcl_NewObj();
+      Tcl_IncrRefCount(ancestorStackObj);
+   }
+
+   ForeachChildInfo foreachChildInfo = {
+      .ancestorStackObj = ancestorStackObj,
+   };
+
    VisitInfo visitInfo = {
       .interp     = interp,
       .variableNames = varNames,
       .numVariables = numVars,
       .scriptObj  = objv[script_ix],
       .returnCode = TCL_OK,
+      .clientData = &foreachChildInfo,
    };
 
    clang_visitChildren(cursor, foreachChildHelper, &visitInfo);
@@ -5634,6 +5702,9 @@ static int foreachChildObjCmd(ClientData     clientData,
    }
 
 cleanup:
+   if (ancestorStackObj) {
+      Tcl_DecrRefCount(ancestorStackObj);
+   }
    if (varNamesObj) {
       Tcl_DecrRefCount(varNamesObj);
    }

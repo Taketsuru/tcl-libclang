@@ -222,6 +222,27 @@ test foreachChild-1.0 "foreachChild / loop" \
     set cursors {}
     foreachChild c $rootcursor {
         lappend cursors $c;
+    }
+    set i 0;
+    foreachChild c $rootcursor {
+        set othercursor [lindex $cursors $i]
+        incr i;
+        set eq [cursor equal $c $othercursor]
+        if {!$eq} {
+            return "$c != $othercursor"
+        }
+    }
+    return
+}
+
+test foreachChild-2.0 "foreachChild / recurse" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set rootcursor [mytu cursor]
+    set cursors {}
+    foreachChild c $rootcursor {
+        lappend cursors $c;
         recurse
     }
     set i 0;
@@ -233,6 +254,28 @@ test foreachChild-1.0 "foreachChild / loop" \
             return "$c != $othercursor"
         }
         recurse
+    }
+    return
+}
+
+test foreachChild-2.1 "foreachChild / recurse" \
+    -setup { setupCFile foreachChild-2.1.c } \
+    -cleanup { cleanupCFile foreachChild-2.1.c } \
+-body {
+    set cursorparents [dict create]
+    set rootcursor [mytu cursor]
+    dict set cursorparents $rootcursor ""
+    foreachChild {c anc} $rootcursor {
+        if {[location is inMainFile [cursor location $c]]} {
+            dict set cursorparents $c [lindex $anc end];
+            foreach p [lrange $anc 0 end-1] a [lrange $anc 1 end] {
+                set kp [dict get $cursorparents $a]
+                if {![cursor equal $kp $p]} {
+                    return "parents don't match: $kp $p";
+                }
+            }
+            recurse
+        }
     }
     return
 }
