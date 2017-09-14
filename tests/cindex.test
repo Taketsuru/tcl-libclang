@@ -64,6 +64,21 @@ set cleanupMytu {
     rename myindex {}
 }
 
+proc setupCFile {fname args} {
+    set fn [file normalize [file join [tcltest::configure -testdir] testdata $fname]]
+    index myindex
+    myindex translationUnit -detailedPreprocessingRecord -- mytu $fn
+    set numDiag [mytu diagnostic num];
+    if {$numDiag > 0} {
+	::error [join [mytu diagnostics] "\n"]
+    }
+
+}
+
+proc cleanupCFile {fname} {
+    rename myindex ""
+}
+
 #---------------------------------------------------------------------- cursor
 
 test cindex_cursor-0.0 "cursor / all subcommands" \
@@ -326,6 +341,27 @@ test cindex_type-0.0 "type / all subcommands" \
     type spelling $mytype
     return
 }
+
+#------------------------------------------------------------- type fieldVisit
+
+test cindex_type-1.0 "type / fieldVisit" \
+-constraints cindex0.30 \
+-setup { setupCFile type-1.0.c } \
+-cleanup { cleanupCFile type-1.0.c } \
+-body {
+    set res {}
+    foreachChild cx [mytu cursor] {
+        if {[lindex $cx 0] eq "StructDecl"} {
+            set ty [cursor type $cx]
+            lappend res [lindex $ty 0]
+            type foreachField $ty field {
+                lappend res [lindex $field 0]
+            }
+            break;
+        }
+    }
+    return $res
+} -result {Record FieldDecl FieldDecl}
 
 #---------------------------------------------------- <index instance> options
 

@@ -1906,6 +1906,87 @@ static int typeEqualObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+//-------------------------------------------------- type foreachField command
+
+#if CINDEX_VERSION_MINOR >= 30
+static enum CXVisitorResult foreachFieldHelper(CXCursor     cursor,
+                                               CXClientData clientData)
+{
+   int status = TCL_OK;
+
+   struct VisitInfo *visitInfo = (VisitInfo *)clientData;
+
+   Tcl_Obj *cursorObj = newCursorObj(cursor);
+   Tcl_Obj *fieldName = visitInfo->variableNames[0];
+   Tcl_IncrRefCount(cursorObj);
+   if (Tcl_ObjSetVar2(visitInfo->interp, fieldName,
+                      NULL, cursorObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
+
+cleanup:
+   if (cursorObj) {
+      Tcl_DecrRefCount(cursorObj);
+   }
+
+   switch (status) {
+   case TCL_OK:
+   case TCL_CONTINUE:
+      return CXVisit_Continue;
+   case TCL_BREAK:
+      return CXVisit_Break;
+   default:
+      visitInfo->returnCode = status;
+      return CXVisit_Break;
+   }
+}
+
+static int typeForeachFieldObjCmd(ClientData     clientData,
+                                  Tcl_Interp    *interp,
+                                  int            objc,
+                                  Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      recordType_ix,
+      varName_ix,
+      script_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix, objv, "recordType varName script");
+      return TCL_ERROR;
+   }
+
+   CXType type;
+   int status = getTypeFromObj(interp, objv[recordType_ix], &type);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   Tcl_Obj **varNames = (Tcl_Obj **)Tcl_Alloc(sizeof(Tcl_Obj *));
+   varNames[0] = objv[varName_ix];
+
+   VisitInfo visitInfo = {
+      .interp        = interp,
+      .variableNames = varNames,
+      .numVariables  = 1,
+      .scriptObj     = objv[script_ix],
+      .returnCode    = TCL_OK,
+   };
+
+   clang_Type_visitFields(type, foreachFieldHelper, &visitInfo);
+
+   Tcl_Free((void *)varNames);
+
+   return visitInfo.returnCode;
+}
+#endif
+
 //--------------------------------- type functionTypeCallingConvention command
 
 static Tcl_Obj *callingConvValues;
@@ -6246,6 +6327,10 @@ int Cindex_Init(Tcl_Interp *interp)
         clang_getElementType },
       { "equal",
         typeEqualObjCmd },
+#if CINDEX_VERSION_MINOR >= 30
+      { "foreachField",
+        typeForeachFieldObjCmd },
+#endif
       { "functionTypeCallingConvention",
         typeToNamedValueObjCmd,
         &functionTypeCallingConvInfo },
