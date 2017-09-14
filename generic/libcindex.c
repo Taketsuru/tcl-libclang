@@ -6031,6 +6031,22 @@ static EnumConsts cxxRefQualifiers = {
    }
 };
 
+#if CINDEX_VERSION_MINOR >= 29
+static EnumConsts storageClasses = {
+   .names = {
+      "Invalid",
+      "None",
+      "Extern",
+      "Static",
+      "PrivateExtern",
+      "OpenCLWorkGroupLocal",
+      "Auto",
+      "Register",
+      NULL
+   }
+};
+#endif
+
 static CXSourceRange
 cursorGetSpellingNameRange(CXCursor cursor, unsigned index)
 {
@@ -6177,6 +6193,13 @@ int Cindex_Init(Tcl_Interp *interp)
       .masks = objCPropertyAttributes
    };
 
+#if CINDEX_VERSION_MINOR >= 29
+   static CursorToEnumInfo cursorStorageClassInfo = {
+      .proc   = (int (*)(CXCursor))clang_Cursor_getStorageClass,
+      .labels = &storageClasses
+   };
+#endif
+
    static CursorToCursorListInfo argumentsInfo;
    argumentsInfo.getNumInt = &clang_Cursor_getNumArguments;
    argumentsInfo.getIndex = &clang_Cursor_getArgument;
@@ -6313,6 +6336,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "spellingNameRange",
         cursorUnsignedToRangeObjCmd,
         cursorGetSpellingNameRange },
+#if CINDEX_VERSION_MINOR >= 29
+      { "storageClass",
+        cursorToEnumObjCmd,
+        &cursorStorageClassInfo },
+#endif
       { "translationUnit",
         cursorTranslationUnitObjCmd },
       { "templateCursorKind",

@@ -146,6 +146,9 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
     cursor specializedTemplate $root
     cursor spelling $root
     cursor spellingNameRange $root 0
+    if {[::tcltest::testConstraint cindex0.29]} {
+        cursor storageClass $root
+    }
     cursor translationUnit $root
     cursor templateCursorKind $root
     cursor type $root
