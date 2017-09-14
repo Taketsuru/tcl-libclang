@@ -2025,6 +2025,44 @@ static void createCallingConvTable(void)
    Tcl_IncrRefCount(callingConvValues);
 }
 
+#if CINDEX_VERSION_MINOR >= 33
+//-------------------------------------------------- type objCEncoding command
+
+static int typeObjCEncodingObjCmd(ClientData     clientData,
+                              Tcl_Interp    *interp,
+                              int            objc,
+                              Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      type_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, 0, objv, "type");
+      return TCL_ERROR;
+   }
+
+   CXType cxtype;
+   int status = getTypeFromObj(interp, objv[type_ix], &cxtype);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   Tcl_Obj    *resultObj = NULL;
+   if (CXType_Invalid == cxtype.kind) {
+      resultObj = Tcl_NewObj();
+   } else {
+      CXString objcencoding = clang_Type_getObjCEncoding(cxtype);
+      resultObj = convertCXStringToObj(objcencoding);
+   }
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
+#endif
 //------------------------------------------------------ type offsetof command
 
 static int typeOffsetOfObjCmd(ClientData     clientData,
@@ -6786,6 +6824,10 @@ int Cindex_Init(Tcl_Interp *interp)
       { "numTemplateArguments",
         typeToIntObjCmd,
         clang_Type_getNumTemplateArguments },
+#endif
+#if CINDEX_VERSION_MINOR >= 33
+      { "objCEncoding",
+        typeObjCEncodingObjCmd },
 #endif
       { "offsetof",
         typeOffsetOfObjCmd },

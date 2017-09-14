@@ -522,6 +522,9 @@ test cindex_type-0.0 "type / all subcommands" \
     type numArgTypes $mytype
     type numElements $mytype
     type offsetof $mytype test
+    if {[::tcltest::testConstraint cindex0.33]} {
+         type objCEncoding $mytype
+    }
     type pointeeType $mytype
     type resultType $mytype
     type sizeof $mytype
