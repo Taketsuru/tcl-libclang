@@ -5035,6 +5035,12 @@ static const char *parseOptions[] = {
    "-cxxChainedPCH",
    "-skipFunctionBodies",
    "-includeBriefCommentsInCodeCompletion",
+#if CINDEX_VERSION_MINOR >= 33
+   "-createPreambleOnFirstParse",
+#endif
+#if CINDEX_VERSION_MINOR >= 34
+   "-keepGoing",
+#endif
    NULL
 };
 

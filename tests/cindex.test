@@ -599,14 +599,22 @@ test indexName_translationUnit-1.0 "indexName translationUnit / all options" \
     rename myindex {}; # this destruct both index & translation unit instances
 } -body {
     set basedir [file join [tcltest::configure -testdir] testdata]
+    set flags [list \
+                   -cacheCompletionResults \
+                   -detailedPreprocessingRecord \
+                   -forSerialization \
+                   -includeBriefCommentsInCodeCompletion \
+                   -incomplete \
+                   -precompiledPreamble \
+                   -skipFunctionBodies];
+    if {[::tcltest::testConstraint cindex0.33]} {
+        lappend flags -createPreambleOnFirstParse;
+    }
+    if {[::tcltest::testConstraint cindex0.34]} {
+        lappend flags -keepGoing;
+    }
     myindex translationUnit \
-        -cacheCompletionResults \
-        -detailedPreprocessingRecord \
-        -forSerialization \
-        -includeBriefCommentsInCodeCompletion \
-        -incomplete \
-        -precompiledPreamble \
-        -skipFunctionBodies \
+        {*}$flags \
         -sourceFile [file join $basedir indexName_translationUnit-1.0.c] \
         -unsavedFile [file join $basedir indexName_translationUnit-1.0.h] "typedef int x;\n"\
         -- mytu
