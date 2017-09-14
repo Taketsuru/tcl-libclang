@@ -5775,6 +5775,8 @@ int Cindex_Init(Tcl_Interp *interp)
         cursorToKindToBoolObjCmd,	clang_isInvalid },
       { "null",
         cursorToBoolObjCmd,		clang_Cursor_isNull },
+      { "valid",
+        cursorToBoolObjCmd},
       { "objCOptional",
         cursorToBoolObjCmd,		clang_Cursor_isObjCOptional },
       { "preprocessing",
