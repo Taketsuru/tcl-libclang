@@ -5120,35 +5120,47 @@ static enum CXChildVisitResult foreachChildHelper(CXCursor     cursor,
                                                   CXCursor     parent,
                                                   CXClientData clientData)
 {
+   int status = TCL_OK;
+   Tcl_Obj *childObj = NULL;
+   Tcl_Obj *parentObj = NULL;
+
    struct ForeachChildInfo *visitInfo = (struct ForeachChildInfo *)clientData;
 
-   Tcl_Obj *cursorObj = newCursorObj(cursor);
+   childObj = newCursorObj(cursor);
+   Tcl_IncrRefCount(childObj);
    if (Tcl_ObjSetVar2(visitInfo->interp, visitInfo->childName,
-                      NULL, cursorObj, TCL_LEAVE_ERR_MSG) == NULL) {
-      return TCL_ERROR;
+                      NULL, childObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
    }
 
    if (visitInfo->parentName != NULL) {
-      Tcl_Obj *parentObj = newCursorObj(parent);
+      parentObj = newCursorObj(parent);
+      Tcl_IncrRefCount(parentObj);
       if (Tcl_ObjSetVar2(visitInfo->interp, visitInfo->parentName,
                          NULL, parentObj, TCL_LEAVE_ERR_MSG) == NULL) {
-         return TCL_ERROR;
+         status = TCL_ERROR;
+         goto cleanup;
       }
    }
 
-   int status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
-   switch (status) {
+   status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
 
+cleanup:
+   if (childObj) {
+      Tcl_DecrRefCount(childObj);
+   }
+   if (parentObj) {
+      Tcl_DecrRefCount(parentObj);
+   }
+   switch (status) {
    case TCL_OK:
    case TCL_CONTINUE:
       return CXChildVisit_Continue;
-
    case TCL_BREAK:
       return CXChildVisit_Break;
-
    case TCL_RECURSE:
       return CXChildVisit_Recurse;
-
    default:
       visitInfo->returnCode = status;
       return CXChildVisit_Break;
