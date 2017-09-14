@@ -2492,6 +2492,61 @@ static int cursorEqualObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+#if CINDEX_VERSION_MINOR >= 33
+//---------------------------------------------------- cursor evaluate command
+
+static int cursorEvaluateObjCmd(ClientData     clientData,
+                                Tcl_Interp    *interp,
+                                int            objc,
+                                Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      cursor_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   CXCursor cursor;
+   int status = getCursorFromObj(interp, objv[cursor_ix], &cursor);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   Tcl_Obj *resultObj = NULL;
+
+   CXEvalResult evalresult = clang_Cursor_Evaluate(cursor);
+
+   switch (clang_EvalResult_getKind(evalresult)) {
+   case CXEval_Int:
+#if CINDEX_VERSION_MINOR >= 37
+      resultObj = Tcl_NewIntObj(clang_EvalResult_isUnsignedInt(evalresult)
+                                ? clang_EvalResult_getAsUnsigned(evalresult)
+                                : clang_EvalResult_getAsLongLong(evalresult));
+#else
+      resultObj = Tcl_NewIntObj(clang_EvalResult_getAsInt(evalresult));
+#endif
+      break;
+   case CXEval_Float:
+      resultObj = Tcl_NewDoubleObj(clang_EvalResult_getAsDouble(evalresult));
+      break;
+   default:
+      resultObj = Tcl_NewStringObj(clang_EvalResult_getAsStr(evalresult), -1);
+      break;
+   }
+
+   clang_EvalResult_dispose(evalresult);
+
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+#endif
+
 //-------------------------------------- cursor::enumConstantDeclValue command
 
 static int cursorEnumConstantDeclValueObjCmd(ClientData     clientData,
@@ -6362,6 +6417,10 @@ int Cindex_Init(Tcl_Interp *interp)
       { "extent",
         cursorToRangeObjCmd,
         clang_getCursorExtent },
+#if CINDEX_VERSION_MINOR >= 33
+      { "evaluate",
+        cursorEvaluateObjCmd },
+#endif
       { "foreachChild",
         foreachChildObjCmd,
         (ClientData)foreachChildSubcommandSyntax },

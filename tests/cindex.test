@@ -201,6 +201,11 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
                     cursor offsetOfField $child
                 }
             }
+            VarDecl {
+                if {[::tcltest::testConstraint cindex0.33]} {
+                    cursor evaluate $cx
+                }
+            }
         }
     }
     return
