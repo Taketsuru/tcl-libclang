@@ -69,6 +69,19 @@ static Tcl_Obj *convertCXStringToObj(CXString str)
    return result;
 }
 
+#if CINDEX_VERSION_MINOR >= 32
+static Tcl_Obj *convertCXStringSetToObj(CXStringSet *strset)
+{
+   Tcl_Obj    *result = Tcl_NewObj();
+   for (int i = 0; i < strset->Count; i++) {
+      const char *cstr   = clang_getCString(strset->Strings[i]);
+      Tcl_ListObjAppendElement(NULL, result, Tcl_NewStringObj(cstr, -1));
+   }
+   clang_disposeStringSet(strset);
+   return result;
+}
+#endif
+
 typedef struct Command
 {
    const char     *name;
@@ -3094,6 +3107,44 @@ static int cursorToStringObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+#if CINDEX_VERSION_MINOR >= 32
+//----------------------------------------------- cursor -> string set command
+
+static int cursorToStringSetObjCmd(ClientData     clientData,
+                                   Tcl_Interp    *interp,
+                                   int            objc,
+                                   Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      cursor_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   CXCursor cursor;
+   int status = getCursorFromObj(interp, objv[cursor_ix], &cursor);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXStringSet *result    = ((CXStringSet *(*)(CXCursor))clientData)(cursor);
+   Tcl_Obj     *resultObj = NULL;
+   if (result) {
+      resultObj = convertCXStringSetToObj(result);
+   } else {
+      resultObj = Tcl_NewObj();
+   }
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
+#endif
 //----------------------------------------------------- cursor -> file command
 
 static int cursorToFileObjCmd(ClientData     clientData,
@@ -6284,6 +6335,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "cxxAccessSpecifier",
         cursorToEnumObjCmd,
         &cursorCXXAccessSpecifierInfo },
+#if CINDEX_VERSION_MINOR >= 32
+      { "cxxManglings",
+        cursorToStringSetObjCmd,
+        clang_Cursor_getCXXManglings },
+#endif
       { "definition",
         cursorToCursorObjCmd,
         clang_getCursorDefinition },

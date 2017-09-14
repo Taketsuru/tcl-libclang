@@ -96,6 +96,9 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
     cursor canonicalCursor $root
     cursor commentRange $root
     cursor cxxAccessSpecifier $root
+    if {[::tcltest::testConstraint cindex0.32]} {
+        cursor cxxManglings $root
+    }
     cursor definition $root
     cursor displayName $root
     cursor equal $root $root
