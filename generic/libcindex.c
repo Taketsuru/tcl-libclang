@@ -1,6 +1,7 @@
 //============================================================================
 
-// Copyright (c) 2016 Patzschke + Rasp Software GmbH, Wiesbaden <amcalvo@prs.de>.
+// Copyright (c) 2016-2017 Patzschke + Rasp Software GmbH, Wiesbaden
+//                         <amcalvo@prs.de>.
 // Copyright (c) 2014 Taketsuru <taketsuru11@gmail.com>.
 // All rights reserved.
 
@@ -769,26 +770,46 @@ static Tcl_Obj *newDecodedLocationObj(CXFile   file,
    return Tcl_NewListObj(nelms, elms);
 }
 
-//---------------------------------------------------------------------- index
+//---------------------------------------------------- index & translationUnit
 
 /** The information associated to an index Tcl command.
  */
 typedef struct IndexInfo
 {
    Tcl_Interp *interp;
-   Tcl_Obj    *children;        // Tcl list of child, such as a translation
-                                // unit, command names
    CXIndex     index;
 } IndexInfo;
+
+/** The information associated to a translationUnit Tcl command.
+ */
+typedef struct TUInfo
+{
+   struct TUInfo     *next;
+   IndexInfo         *parent;
+   Tcl_Command        cmd;
+   CXTranslationUnit  translationUnit;
+} TUInfo;
+
+/** Table holding all created translation units's command info.
+ */
+static TUInfo *tuHashTable[32];
+
+/**
+ * Calculate a hash of a translationUnit.
+ */
+static int tuHash(CXTranslationUnit tu)
+{
+   int hashTableSize = sizeof tuHashTable / sizeof tuHashTable[0];
+   return ((uintptr_t)tu / (sizeof(void *) * 4)) % hashTableSize;
+}
+
+//---------------------------------------------------------------------- index
 
 static IndexInfo *createIndexInfo(Tcl_Interp *interp, CXIndex index)
 {
    IndexInfo *info = (IndexInfo *)Tcl_Alloc(sizeof *info);
    info->interp    = interp;
-   info->children  = Tcl_NewObj();
    info->index     = index;
-
-   Tcl_IncrRefCount(info->children);
 
    return info;
 }
@@ -799,142 +820,40 @@ static IndexInfo *createIndexInfo(Tcl_Interp *interp, CXIndex index)
  */
 static void indexDeleteProc(ClientData clientData)
 {
-   int status = TCL_OK;
-
    IndexInfo *info = (IndexInfo *)clientData;
 
    Tcl_Interp *interp = info->interp;
 
-   // Until info->children becomes empty, delete the last command in the list.
-   for (;;) {
-      int n;
-      status = Tcl_ListObjLength(NULL, info->children, &n);
-      if (status != TCL_OK) {
-         goto corrupted;
+   int numentries = sizeof tuHashTable / sizeof tuHashTable[0];
+   for (int i = 0; i < numentries; i++) {
+      for (TUInfo *t = tuHashTable[i]; t != NULL; t = t->next) {
+         if (t->parent == info) {
+            Tcl_DeleteCommandFromToken(interp, t->cmd);
+         }
       }
-
-      if (n <= 0) {
-         break;
-      }
-
-      Tcl_Obj *child;
-      status = Tcl_ListObjIndex(NULL, info->children, n - 1, &child);
-      if (status != TCL_OK) {
-         goto corrupted;
-      }
-
-      Tcl_IncrRefCount(child);
-      const char *childName = Tcl_GetStringFromObj(child, NULL);
-      Tcl_DeleteCommand(interp, childName);
-      Tcl_DecrRefCount(child);
    }
 
    clang_disposeIndex(info->index);
-   Tcl_DecrRefCount(info->children);
    Tcl_Free((char *)info);
 
    return;
-
- corrupted:
-   Tcl_Panic("%s: info->children corrupted", __func__);
-}
-
-static void indexAddChild(IndexInfo *info, Tcl_Obj *child)
-{
-   Tcl_Obj *children = info->children;
-   if (Tcl_IsShared(children)) {
-      Tcl_Obj *newChildren = Tcl_DuplicateObj(children);
-      Tcl_DecrRefCount(children);
-      Tcl_IncrRefCount(newChildren);
-      info->children = children = newChildren;
-   }
-
-   int status = Tcl_ListObjAppendElement(NULL, children, child);
-   if (status != TCL_OK) {
-      Tcl_Panic("%s: children list corrupted", __func__);
-   }
-}
-
-static void indexRemoveChild(IndexInfo *info, Tcl_Obj *child)
-{
-   Tcl_Obj *children = info->children;
-   if (Tcl_IsShared(children)) {
-      Tcl_Obj *newChildren = Tcl_DuplicateObj(children);
-      Tcl_DecrRefCount(children);
-      Tcl_IncrRefCount(newChildren);
-      info->children = children = newChildren;
-   }
-
-   int n;
-   int status  = Tcl_ListObjLength(NULL, children, &n);
-   if (status != TCL_OK) {
-      Tcl_Panic("%s: children list corrupted", __func__);
-   }
-
-   int         child_strlen = 0;
-   const char *child_str    = Tcl_GetStringFromObj(child, &child_strlen);
-   int         found        = 0;
-   for (int i = n - 1; 0 <= i; --i) {
-
-      Tcl_Obj *elm;
-      status = Tcl_ListObjIndex(NULL, children, i, &elm);
-      if (status != TCL_OK) {
-         break;
-      }
-
-      int         elm_strlen;
-      const char *elm_str = Tcl_GetStringFromObj(elm, &elm_strlen);
-
-      if (elm_str == child_str
-          || (elm_strlen == child_strlen
-              && memcmp(elm_str, child_str, elm_strlen) == 0)) {
-         found = 1;
-         status = Tcl_ListObjReplace(NULL, children, i, 1, 0, NULL);
-         break;
-      }
-
-   }
-
-   if (status == TCL_OK && ! found) {
-      Tcl_Panic("child %s doesn't exist in the children list\n", child_str);
-   }
 }
 
 //----------------------------------------------------------- translation unit
 
-typedef struct TUInfo
-{
-   struct TUInfo     *next;
-   IndexInfo         *parent;
-   Tcl_Obj           *name;
-   CXTranslationUnit  translationUnit;
-} TUInfo;
-
-static TUInfo *tuHashTable[32];
-
-static int tuHash(CXTranslationUnit tu)
-{
-   int hashTableSize = sizeof tuHashTable / sizeof tuHashTable[0];
-   return ((uintptr_t)tu / (sizeof(void *) * 4)) % hashTableSize;
-}
-
 static TUInfo * createTUInfo(IndexInfo         *parent,
-                             Tcl_Obj           *tuName,
+                             Tcl_Command       cmd,
                              CXTranslationUnit  tu)
 {
    TUInfo *info = (TUInfo *)Tcl_Alloc(sizeof *info);
 
    info->parent          = parent;
-   info->name            = tuName;
    info->translationUnit = tu;
-
-   Tcl_IncrRefCount(tuName);
+   info->cmd             = cmd;
 
    int hash          = tuHash(tu);
    info->next        = tuHashTable[hash];
    tuHashTable[hash] = info;
-
-   indexAddChild(parent, tuName);
 
    return info;
 }
@@ -943,9 +862,6 @@ static void tuDeleteProc(ClientData clientData)
 {
    TUInfo *info = (TUInfo *)clientData;
 
-   indexRemoveChild(info->parent, info->name);
-
-   Tcl_DecrRefCount(info->name);
    clang_disposeTranslationUnit(info->translationUnit);
 
    int      hash = tuHash(info->translationUnit);
@@ -2928,7 +2844,9 @@ static int cursorTranslationUnitObjCmd(ClientData     clientData,
       Tcl_Panic("invalid cursor");
    }
 
-   Tcl_SetObjResult(interp, info->name);
+   Tcl_Obj *tuObj = Tcl_NewObj();
+   Tcl_GetCommandFullName(interp, info->cmd, tuObj);
+   Tcl_SetObjResult(interp, tuObj);
 
    return TCL_OK;
 }
@@ -4461,9 +4379,12 @@ static int tuReparseObjCmd(ClientData     clientData,
    Tcl_Free((char *)unsavedFiles);
 
    if (status != 0) {
+      Tcl_Obj *tuObj = Tcl_NewObj();
+      Tcl_GetCommandFullName(interp, info->cmd, tuObj);
       Tcl_SetObjResult(interp,
                        Tcl_ObjPrintf("translation unit \"%s\" is not valid",
-                                     Tcl_GetStringFromObj(info->name, NULL)));
+                                     Tcl_GetStringFromObj(tuObj, NULL)));
+      Tcl_DecrRefCount(tuObj);
       return TCL_ERROR;
    }
 
@@ -4546,17 +4467,27 @@ static int tuSaveObjCmd(ClientData     clientData,
       return TCL_ERROR;
 
    case CXSaveError_TranslationErrors:
+   {
+      Tcl_Obj *tuObj = Tcl_NewObj();
+      Tcl_GetCommandFullName(interp, info->cmd, tuObj);
       Tcl_SetObjResult(interp,
                        Tcl_ObjPrintf("errors during translation prevented "
                                      "the attempt to save \"%s\"",
-                                     Tcl_GetStringFromObj(info->name, NULL)));
+                                     Tcl_GetStringFromObj(tuObj, NULL)));
+      Tcl_DecrRefCount(tuObj);
       return TCL_ERROR;
+   }
 
    case CXSaveError_InvalidTU:
+   {
+      Tcl_Obj *tuObj = Tcl_NewObj();
+      Tcl_GetCommandFullName(interp, info->cmd, tuObj);
       Tcl_SetObjResult(interp,
                        Tcl_ObjPrintf("invalid translation unit \"%s\"",
-                                     Tcl_GetStringFromObj(info->name, NULL)));
+                                     Tcl_GetStringFromObj(tuObj, NULL)));
+      Tcl_DecrRefCount(tuObj);
       return TCL_ERROR;
+   }
 
    default:
       Tcl_SetObjResult(interp,
@@ -5077,10 +5008,16 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   TUInfo     *info        = createTUInfo(parent, tuNameObj, tu);
    const char *commandName = Tcl_GetStringFromObj(tuNameObj, NULL);
-   Tcl_CreateObjCommand(interp, commandName,
-                        tuInstanceObjCmd, info, tuDeleteProc);
+   Tcl_Command cmd = Tcl_CreateObjCommand(interp, commandName,
+                                          tuInstanceObjCmd, NULL, tuDeleteProc);
+   Tcl_CmdInfo cmdinfo;
+   TUInfo     *info        = createTUInfo(parent, cmd, tu);
+   Tcl_GetCommandInfoFromToken(cmd, &cmdinfo);
+   cmdinfo.objClientData = info;
+   cmdinfo.clientData = info;
+   cmdinfo.deleteData = info;
+   Tcl_SetCommandInfoFromToken(cmd, &cmdinfo);
 
    Tcl_SetObjResult(interp, tuNameObj);
 

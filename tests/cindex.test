@@ -1,6 +1,7 @@
 # ============================================================================
 #
-# Copyright (c) 2016 Patzschke + Rasp Software GmbH, Wiesbaden <amcalvo@prs.de>.
+# Copyright (c) 2016-2017 Patzschke + Rasp Software GmbH, Wiesbaden
+#                         <amcalvo@prs.de>.
 # Copyright (c) 2014 Taketsuru <taketsuru11@gmail.com>.
 #
 # All rights reserved.
@@ -578,6 +579,23 @@ test indexName_translationUnit-1.0 "indexName translationUnit / all options" \
 }
 
 #------------------------------------------------- <translation unit instance>
+
+test translationUnit-1.0 \
+    "<translation unit instance> delete" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    rename mytu "";
+} -result "";
+
+test translationUnit-2.0 \
+    "<translation unit instance> rename" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    rename mytu othertu;
+} -result "";
+
 
 #------------------------------------------ <translation unit instance> cursor
 
