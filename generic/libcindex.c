@@ -5460,30 +5460,36 @@ static int foreachChildObjCmd(ClientData     clientData,
       nargs
    };
 
+   Tcl_Obj *varNamesObj = NULL;
+   int status = TCL_OK;
+
    if (objc != nargs) {
       Tcl_WrongNumArgs(interp, command_ix, objv, "varName cursor script");
-      return TCL_ERROR;
+      status = TCL_ERROR;
+      goto cleanup;
    }
 
-   int       numVars;
-   Tcl_Obj **varNames;
-   int status
-      = Tcl_ListObjGetElements(interp, objv[varName_ix], &numVars, &varNames);
+   int       numVars = 0;
+   Tcl_Obj **varNames = NULL;
+   varNamesObj = Tcl_DuplicateObj(objv[varName_ix]);
+   Tcl_IncrRefCount(varNamesObj);
+   status = Tcl_ListObjGetElements(interp, varNamesObj, &numVars, &varNames);
    if (status != TCL_OK) {
-      return status;
+      goto cleanup;
    }
 
    if (numVars != 1 && numVars != 2) {
       Tcl_SetObjResult(interp,
                        Tcl_NewStringObj("one of two variable names "
                                         "are expected", -1));
-      return TCL_ERROR;
+      status = TCL_ERROR;
+      goto cleanup;
    }
 
    CXCursor cursor;
    status = getCursorFromObj(interp, objv[cursor_ix], &cursor);
    if (status != TCL_OK) {
-      return status;
+      goto cleanup;
    }
 
    struct ForeachChildInfo visitInfo = {
@@ -5496,7 +5502,14 @@ static int foreachChildObjCmd(ClientData     clientData,
 
    clang_visitChildren(cursor, foreachChildHelper, &visitInfo);
 
-   return visitInfo.returnCode;
+   status = visitInfo.returnCode;
+
+cleanup:
+   if (varNamesObj) {
+      Tcl_DecrRefCount(varNamesObj);
+   }
+
+   return status;
 }
 
 //-------------------------------------------------------------- index command

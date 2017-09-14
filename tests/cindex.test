@@ -183,6 +183,30 @@ test cindex_cursor-2.0 "cursor / numArguments/argument/arguments" \
 
 #---------------------------------------------------------------- foreachChild
 
+test foreachChild-1.0 "foreachChild / loop" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set rootcursor [mytu cursor]
+    set cursors {}
+    foreachChild c $rootcursor {
+        lappend cursors $c;
+        recurse
+    }
+    set i 0;
+    foreachChild c $rootcursor {
+        set othercursor [lindex $cursors $i]
+        incr i;
+        set eq [cursor equal $c $othercursor]
+        if {!$eq} {
+            return "$c != $othercursor"
+        }
+        recurse
+    }
+    return
+}
+
+
 #----------------------------------------------------------------------- index
 
 test index-0.0 "index / construction & destruction" -body {
