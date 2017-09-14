@@ -154,6 +154,9 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
     cursor type $root
     cursor typedefDeclUnderlyingType $root
     cursor USR $root
+    if {[::tcltest::testConstraint cindex0.32]} {
+        cursor visibility $root
+    }
     cursor foreachChild $root child {
         switch -- [lindex $child 0] {
             EnumDecl {

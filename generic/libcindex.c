@@ -6047,6 +6047,18 @@ static EnumConsts storageClasses = {
 };
 #endif
 
+#if CINDEX_VERSION_MINOR >= 32
+static EnumConsts visibilityKinds = {
+   .names = {
+      "Invalid",
+      "Hidden",
+      "Protected",
+      "Default",
+      NULL
+   }
+};
+#endif
+
 static CXSourceRange
 cursorGetSpellingNameRange(CXCursor cursor, unsigned index)
 {
@@ -6197,6 +6209,13 @@ int Cindex_Init(Tcl_Interp *interp)
    static CursorToEnumInfo cursorStorageClassInfo = {
       .proc   = (int (*)(CXCursor))clang_Cursor_getStorageClass,
       .labels = &storageClasses
+   };
+#endif
+
+#if CINDEX_VERSION_MINOR >= 32
+   static CursorToEnumInfo cursorVisibilityKindInfo = {
+      .proc   = (int (*)(CXCursor))clang_getCursorVisibility,
+      .labels = &visibilityKinds
    };
 #endif
 
@@ -6355,6 +6374,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "USR",
         cursorToStringObjCmd,
         clang_getCursorUSR },
+#if CINDEX_VERSION_MINOR >= 32
+      { "visibility",
+        cursorToEnumObjCmd,
+        &cursorVisibilityKindInfo },
+#endif
       { NULL }
    };
    createAndExportCommands(interp, "cindex::cursor::%s", cursorCmdTable);
