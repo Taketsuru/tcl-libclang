@@ -1338,6 +1338,7 @@ static void createCursorKindTable(void)
         CXCursor_InclusionDirective },
       { "ModuleImportDecl",
         CXCursor_ModuleImportDecl },
+      { NULL }
    };
 
    createNameValueTable(&cursorKindNames, &cursorKindValues, table);
