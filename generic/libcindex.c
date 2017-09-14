@@ -5545,6 +5545,11 @@ cleanup:
    }
 }
 
+enum ForeachChildSyntax {
+    foreachChildTopLevelSyntax,
+    foreachChildSubcommandSyntax
+};
+
 static int foreachChildObjCmd(ClientData     clientData,
                               Tcl_Interp    *interp,
                               int            objc,
@@ -5558,18 +5563,38 @@ static int foreachChildObjCmd(ClientData     clientData,
       nargs
    };
 
+   char *wrongNumArgsErrMsg = NULL;
+   Tcl_Obj *varNameObjArg = NULL;
+   Tcl_Obj *cursorObjArg = NULL;
    Tcl_Obj *varNamesObj = NULL;
    int status = TCL_OK;
 
+   switch ((enum ForeachChildSyntax)clientData) {
+   case foreachChildTopLevelSyntax:
+      varNameObjArg = objv[varName_ix];
+      cursorObjArg = objv[cursor_ix];
+      wrongNumArgsErrMsg = "varName cursor script";
+      break;
+   case foreachChildSubcommandSyntax:
+      varNameObjArg = objv[cursor_ix];
+      cursorObjArg = objv[varName_ix];
+      wrongNumArgsErrMsg = "cursor varName script";
+      break;
+   }
+
    if (objc != nargs) {
-      Tcl_WrongNumArgs(interp, command_ix, objv, "varName cursor script");
+      Tcl_WrongNumArgs(interp, command_ix, objv, wrongNumArgsErrMsg);
       status = TCL_ERROR;
       goto cleanup;
    }
 
+   /*
+    * I think this is a Tcl bug.  I don't modify the list, why should I need
+    * to duplicate it?  It is the bytecode guy the one that modifies it!
+    */
    int       numVars = 0;
    Tcl_Obj **varNames = NULL;
-   varNamesObj = Tcl_DuplicateObj(objv[varName_ix]);
+   varNamesObj = Tcl_DuplicateObj(varNameObjArg);
    Tcl_IncrRefCount(varNamesObj);
    status = Tcl_ListObjGetElements(interp, varNamesObj, &numVars, &varNames);
    if (status != TCL_OK) {
@@ -5585,7 +5610,7 @@ static int foreachChildObjCmd(ClientData     clientData,
    }
 
    CXCursor cursor;
-   status = getCursorFromObj(interp, objv[cursor_ix], &cursor);
+   status = getCursorFromObj(interp, cursorObjArg, &cursor);
    if (status != TCL_OK) {
       goto cleanup;
    }
@@ -5976,7 +6001,8 @@ int Cindex_Init(Tcl_Interp *interp)
         bistObjCmd },
 #endif
       { "foreachChild",
-        foreachChildObjCmd },
+        foreachChildObjCmd,
+        (ClientData)foreachChildTopLevelSyntax },
       { "index",
         indexObjCmd },
       { "recurse",
@@ -6074,6 +6100,9 @@ int Cindex_Init(Tcl_Interp *interp)
       { "extent",
         cursorToRangeObjCmd,
         clang_getCursorExtent },
+      { "foreachChild",
+        foreachChildObjCmd,
+        (ClientData)foreachChildSubcommandSyntax },
       { "fieldDeclBitWidth",
         cursorToIntObjCmd,
         clang_getFieldDeclBitWidth },

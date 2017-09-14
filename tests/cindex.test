@@ -148,7 +148,7 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
     cursor type $root
     cursor typedefDeclUnderlyingType $root
     cursor USR $root
-    foreachChild child $root {
+    cursor foreachChild $root child {
         switch -- [lindex $child 0] {
             EnumDecl {
                 cursor enumDeclIntegerType $child
@@ -169,7 +169,7 @@ test cindex_cursor-2.0 "cursor / numArguments/argument/arguments" \
     -setup $setupMytu \
     -cleanup $cleanupMytu \
 -body {
-    foreachChild cursor [mytu cursor] {
+    cursor foreachChild [mytu cursor] cursor {
         if {[lindex $cursor 0] eq "FunctionDecl"} {
             foreach subcmd {argument overloadedDecl} {
                 set numsubcmd "num[string toupper [string index $subcmd 0]][string range $subcmd 1 end]s";
