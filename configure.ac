@@ -175,8 +175,10 @@ AC_MSG_CHECKING([for llvm-config usability])
 LLVM_VERSION="$(${LLVM_CONFIG} --version)"
 CLANG_CFLAGS="-I$(${LLVM_CONFIG} --includedir)"
 CLANG_LIBS="-L$(${LLVM_CONFIG} --libdir) -lclang"
+CLANG_BUILTIN_HEADER_INCLUDE_DIR="$(${LLVM_CONFIG} --libdir)/clang/${LLVM_VERSION}/include"
 AC_SUBST([CLANG_CFLAGS])
 AC_SUBST([CLANG_LIBS])
+AC_SUBST([CLANG_BUILTIN_HEADER_INCLUDE_DIR])
 AC_MSG_RESULT([yes])
 
 #--------------------------------------------------------------------

@@ -32,10 +32,34 @@ namespace import tcltest::*
 package require cindex
 namespace import cindex::*
 
+tcltest::testConstraint hasBistCommand \
+    [::expr {"" ne [info comm ::cindex::bist]}];
+
 #------------------------------------------------------------------------ bist
 
-test bist-1.0 "bist" -body {
+test bist-1.0 "bist" -constraints hasBistCommand -body {
     bist
+}
+
+#----------------------------------------------------------------------- setup
+
+set setupMytu {
+    set fn [file normalize [file join [file dirname [info script]] .. generic libcindex.c]];
+    index myindex
+    myindex translationUnit \
+        -detailedPreprocessingRecord -- mytu $fn -I$::env(CLANG_BUILTIN_HEADER_INCLUDE_DIR) {*}$::env(COMPILE_FLAGS)
+    set numDiag [mytu diagnostic num];
+    set diagnostics {};
+    for {set i 0} {$i < $numDiag} {incr i} {
+	lappend diagnostics [mytu diagnostic decode $i];
+    }
+    if {$numDiag > 0} {
+	::error [join $diagnostics \n];
+    }
+}
+
+set cleanupMytu {
+    rename myindex {}
 }
 
 #---------------------------------------------------------------------- cursor
@@ -83,23 +107,23 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
     cursor location $root
     cursor null
     cursor numArguments $root
-    cursor numOverloadedDecls $root
-    cursor objcDeclQualifiers $root
-    cursor objcPropertyAttributes $root
-    cursor objcSelectorIndex $root
-    cursor objcTypeEncoding $root
-    cursor overloadedDecls $root
+    cursor numOverloadedDecls $root;
+    cursor objCDeclQualifiers $root
+    cursor objCPropertyAttributes $root
+    cursor objCSelectorIndex $root
+    cursor objCTypeEncoding $root
+    cursor overloadedDecl $root 0
     cursor overriddenCursors $root
     cursor platformAvailability $root
     cursor rawCommentText $root
     cursor receiverType $root
     cursor referenced $root
-    cursor referenceNameRange $root
+    cursor referenceNameRange $root 0
     cursor resultType $root
     cursor semanticParent $root
     cursor specializedTemplate $root
     cursor spelling $root
-    cursor spellingNameRange $root
+    cursor spellingNameRange $root 0
     cursor translationUnit $root
     cursor templateCursorKind $root
     cursor type $root
@@ -133,26 +157,42 @@ test index-0.0 "index / construction & destruction" -body {
 }
 
 test index-1.0 "index / -displayDiagnostics" -body {
-    catch {exec "tclsh$tcl_version" src/testdata/index-1.0.tcl} result
+    catch {exec [info nameofexecutable] [file join [tcltest::configure -testdir] testdata index-1.0.tcl]} result
     return $result
-} -result "src/testdata/error.c:1:9: error: expected ';' after top level declarator"
+} -result "*index-1.0.c:*:*: error: expected ';' after top level declarator" -match glob
 
 test index-1.1 "index / -excludeDeclFromPCH" -setup {
     index myindex
-    myindex translationUnit -incomplete mytu src/testdata/index-1.1.h
-    mytu save src/testdata/index-1.1.h.pch
+    set hfn [file join [tcltest::configure -testdir] testdata index-1.1.h]
+    set cfn [file join [tcltest::configure -testdir] testdata index-1.1.c]
+    set pchfn [file join [tcltest::configure -tmpdir] index-1.1.h.pch]
+    myindex translationUnit -incomplete mytu $hfn
+    mytu save $pchfn
 } -body {
+    # without -excludeDeclFromPCH finds the function declaration in the
+    # pre-compiled header file.
+    index myindex
+    myindex translationUnit mytu -include-pch $pchfn $cfn
+    set res "";
+    foreachChild cursor [mytu cursor] {
+        if {[lindex $cursor 0] eq "VarDecl"} {
+            set res "The first element of index-1.1.c is a VarDecl."
+        }
+        break;
+    }
+    if {"" ne $res } { return $res; }
+    # with -excludeDeclFromPCH the VarDecl in $cfn is found first.
     index -excludeDeclFromPCH myindex
-    myindex translationUnit mytu \
-        -include src/testdata/index-1.1.h src/testdata/index-1.1.c
+    myindex translationUnit -- mytu -include-pch $pchfn $cfn
     foreachChild cursor [mytu cursor] {
         if {[lindex $cursor 0] ne "VarDecl"} {
-            error "The first element of index-1.1.c isn't a VarDecl."
+            set res "The first element of index-1.1.c isn't a VarDecl, but [lindex $cursor 0]."
         }
-        return
+        break;
     }
+    if {"" ne $res } { return $res; }
 } -cleanup {
-    file delete src/testdata/index-1.1.h.pch
+    file delete $pchfn
     rename myindex {}
 }
 
@@ -160,7 +200,7 @@ test index-1.1 "index / -excludeDeclFromPCH" -setup {
 
 test cindex_location-0.0 "location / all subcommands" \
 -setup $setupMytu \
--cleanup $setupMytu \
+-cleanup $cleanupMytu \
 -body {
     set mylocation [cursor location [mytu cursor]]
     location equal $mylocation $mylocation
@@ -179,7 +219,7 @@ test cindex_location-0.0 "location / all subcommands" \
 
 test cindex_range-0.0 "range / all subcommands" \
 -setup $setupMytu \
--cleanup $setupMytu \
+-cleanup $cleanupMytu \
 -body {
     set myrange [cursor extent [mytu cursor]]
     set mylocation [cursor location [mytu cursor]]
@@ -198,7 +238,7 @@ test cindex_range-0.0 "range / all subcommands" \
 
 test cindex_type-0.0 "type / all subcommands" \
 -setup $setupMytu \
--cleanup $setupMytu \
+-cleanup $cleanupMytu \
 -body {
     set mytype [cursor type [mytu cursor]]
     type alignof $mytype
@@ -281,33 +321,23 @@ test indexName_translationUnit-1.0 "indexName translationUnit / all options" \
 -setup {
     index -displayDiagnostics myindex
 } -cleanup {
-    rename myindex {} # this destruct both index & translation unit instances
+    rename myindex {}; # this destruct both index & translation unit instances
 } -body {
+    set basedir [file join [tcltest::configure -testdir] testdata]
     myindex translationUnit \
         -cacheCompletionResults \
         -detailedPreprocessingRecord \
         -forSerialization \
         -includeBriefCommentsInCodeCompletion \
         -incomplete \
-        -parseLater \
         -precompiledPreamble \
         -skipFunctionBodies \
-        -sourceFile src/testdata/indexName_translationUnit-1.0.c \
-        -unsavedFile src/testdata/indexName_translationUnit-1.0.h \
-        	"typedef int x;\n"\
+        -sourceFile [file join $basedir indexName_translationUnit-1.0.c] \
+        -unsavedFile [file join $basedir indexName_translationUnit-1.0.h] "typedef int x;\n"\
         -- mytu
 }
 
 #------------------------------------------------- <translation unit instance>
-
-set setupMytu {
-    index myindex
-    myindex translationUnit -- mytu src/testdata/refman_index.c
-}
-
-set cleanupMytu {
-    rename myindex {}
-}
 
 #------------------------------------------ <translation unit instance> cursor
 
