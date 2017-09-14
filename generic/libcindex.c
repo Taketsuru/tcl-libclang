@@ -1116,8 +1116,12 @@ static void createCursorKindTable(void)
         CXCursor_ObjCDynamicDecl },
       { "CXXAccessSpecifier",
         CXCursor_CXXAccessSpecifier },
-      { "FirstRef",
-        CXCursor_FirstRef },
+      /* { "CXCursor_FirstDecl", */
+      /*   CXCursor_FirstDecl }, */
+      /* { "CXCursor_LastDecl", */
+      /*   CXCursor_LastDecl }, */
+      /* { "FirstRef", */
+      /*   CXCursor_FirstRef }, */
       { "ObjCSuperClassRef",
         CXCursor_ObjCSuperClassRef },
       { "ObjCProtocolRef",
@@ -1140,6 +1144,10 @@ static void createCursorKindTable(void)
         CXCursor_OverloadedDeclRef },
       { "VariableRef",
         CXCursor_VariableRef },
+      /* { "LastRef", */
+      /*   CXCursor_LastRef }, */
+      /* { "FirstInvalid", */
+      /*   CXCursor_FirstInvalid }, */
       { "InvalidFile",
         CXCursor_InvalidFile },
       { "NoDeclFound",
@@ -1148,6 +1156,10 @@ static void createCursorKindTable(void)
         CXCursor_NotImplemented },
       { "InvalidCode",
         CXCursor_InvalidCode },
+      /* { "LastInvalid", */
+      /*   CXCursor_LastInvalid }, */
+      /* { "FirstExpr", */
+      /*   CXCursor_FirstExpr }, */
       { "UnexposedExpr",
         CXCursor_UnexposedExpr },
       { "DeclRefExpr",
@@ -1242,6 +1254,18 @@ static void createCursorKindTable(void)
         CXCursor_ObjCBoolLiteralExpr },
       { "ObjCSelfExpr",
         CXCursor_ObjCSelfExpr },
+#if CINDEX_VERSION_MINOR >= 31
+      { "OMPArraySectionExpr",
+        CXCursor_OMPArraySectionExpr },
+#endif
+#if CINDEX_VERSION_MINOR >= 36
+      { "ObjCAvailabilityCheckExpr",
+        CXCursor_ObjCAvailabilityCheckExpr },
+#endif
+      /* { "LastExpr", */
+      /*   CXCursor_LastExpr }, */
+      /* { "FirstStmt", */
+      /*   CXCursor_FirstStmt }, */
       { "UnexposedStmt",
         CXCursor_UnexposedStmt },
       { "LabelStmt",
@@ -1272,6 +1296,8 @@ static void createCursorKindTable(void)
         CXCursor_BreakStmt },
       { "ReturnStmt",
         CXCursor_ReturnStmt },
+      /* { "GCCAsmStmt", */
+      /*   CXCursor_GCCAsmStmt }, */
       { "AsmStmt",
         CXCursor_AsmStmt },
       { "ObjCAtTryStmt",
@@ -1308,8 +1334,108 @@ static void createCursorKindTable(void)
         CXCursor_DeclStmt },
       { "OMPParallelDirective",
         CXCursor_OMPParallelDirective },
+#if CINDEX_VERSION_MINOR >= 25
+      { "OMPSimdDirective",
+        CXCursor_OMPSimdDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 28
+      { "OMPForDirective",
+        CXCursor_OMPForDirective },
+      { "OMPSectionsDirective",
+        CXCursor_OMPSectionsDirective },
+      { "OMPSectionDirective",
+        CXCursor_OMPSectionDirective },
+      { "OMPSingleDirective",
+        CXCursor_OMPSingleDirective },
+      { "OMPParallelForDirective",
+        CXCursor_OMPParallelForDirective },
+      { "OMPParallelSectionsDirective",
+        CXCursor_OMPParallelSectionsDirective },
+      { "OMPTaskDirective",
+        CXCursor_OMPTaskDirective },
+      { "OMPMasterDirective",
+        CXCursor_OMPMasterDirective },
+      { "OMPCriticalDirective",
+        CXCursor_OMPCriticalDirective },
+      { "OMPTaskyieldDirective",
+        CXCursor_OMPTaskyieldDirective },
+      { "OMPBarrierDirective",
+        CXCursor_OMPBarrierDirective },
+      { "OMPTaskwaitDirective",
+        CXCursor_OMPTaskwaitDirective },
+      { "OMPFlushDirective",
+        CXCursor_OMPFlushDirective },
+      { "SEHLeaveStmt",
+        CXCursor_SEHLeaveStmt },
+      { "OMPOrderedDirective",
+        CXCursor_OMPOrderedDirective },
+      { "OMPAtomicDirective",
+        CXCursor_OMPAtomicDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 29
+      { "OMPForSimdDirective",
+        CXCursor_OMPForSimdDirective },
+      { "OMPParallelForSimdDirective",
+        CXCursor_OMPParallelForSimdDirective },
+      { "OMPTargetDirective",
+        CXCursor_OMPTargetDirective },
+      { "OMPTeamsDirective",
+        CXCursor_OMPTeamsDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 31
+      { "OMPTaskgroupDirective",
+        CXCursor_OMPTaskgroupDirective },
+      { "OMPCancellationPointDirective",
+        CXCursor_OMPCancellationPointDirective },
+      { "OMPCancelDirective",
+        CXCursor_OMPCancelDirective },
+      { "OMPTargetDataDirective",
+        CXCursor_OMPTargetDataDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 32
+      { "OMPTaskLoopDirective",
+        CXCursor_OMPTaskLoopDirective },
+      { "OMPTaskLoopSimdDirective",
+        CXCursor_OMPTaskLoopSimdDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 33
+      { "OMPDistributeDirective",
+        CXCursor_OMPDistributeDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 34
+      { "OMPTargetEnterDataDirective",
+        CXCursor_OMPTargetEnterDataDirective },
+      { "OMPTargetExitDataDirective",
+        CXCursor_OMPTargetExitDataDirective },
+      { "OMPTargetParallelDirective",
+        CXCursor_OMPTargetParallelDirective },
+      { "OMPTargetParallelForDirective",
+        CXCursor_OMPTargetParallelForDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 35
+      { "OMPTargetUpdateDirective",
+        CXCursor_OMPTargetUpdateDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 36
+      { "OMPDistributeParallelForDirective",
+        CXCursor_OMPDistributeParallelForDirective },
+      { "OMPDistributeSimdDirective",
+        CXCursor_OMPDistributeSimdDirective },
+      { "OMPTargetParallelForSimdDirective",
+        CXCursor_OMPTargetParallelForSimdDirective },
+      { "OMPTargetSimdDirective",
+        CXCursor_OMPTargetSimdDirective },
+      { "OMPTeamsDistributeDirective",
+        CXCursor_OMPTeamsDistributeDirective },
+      { "OMPTeamsDistributeSimdDirective",
+        CXCursor_OMPTeamsDistributeSimdDirective },
+#endif
+      /* { "LastStmt", */
+      /*   CXCursor_LastStmt }, */
       { "TranslationUnit",
         CXCursor_TranslationUnit },
+      /* { "FirstAttr", */
+      /*   CXCursor_FirstAttr }, */
       { "UnexposedAttr",
         CXCursor_UnexposedAttr },
       { "IBActionAttr",
@@ -1328,16 +1454,72 @@ static void createCursorKindTable(void)
         CXCursor_AsmLabelAttr },
       { "PackedAttr",
         CXCursor_PackedAttr },
+#if CINDEX_VERSION_MINOR >= 26
+      { "PureAttr",
+        CXCursor_PureAttr },
+      { "ConstAttr",
+        CXCursor_ConstAttr },
+      { "NoDuplicateAttr",
+        CXCursor_NoDuplicateAttr },
+#endif
+#if CINDEX_VERSION_MINOR >= 28
+      { "CUDAConstantAttr",
+        CXCursor_CUDAConstantAttr },
+      { "CUDADeviceAttr",
+        CXCursor_CUDADeviceAttr },
+      { "CUDAGlobalAttr",
+        CXCursor_CUDAGlobalAttr },
+      { "CUDAHostAttr",
+        CXCursor_CUDAHostAttr },
+      { "CUDASharedAttr",
+        CXCursor_CUDASharedAttr },
+#endif
+#if CINDEX_VERSION_MINOR >= 31
+      { "VisibilityAttr",
+        CXCursor_VisibilityAttr },
+#endif
+#if CINDEX_VERSION_MINOR >= 32
+      { "DLLExport",
+        CXCursor_DLLExport },
+      { "DLLImport",
+        CXCursor_DLLImport },
+#endif
+      /* { "LastAttr", */
+      /*   CXCursor_LastAttr }, */
+      /* { "FirstPreprocessing", */
+      /*   CXCursor_FirstPreprocessing }, */
       { "PreprocessingDirective",
         CXCursor_PreprocessingDirective },
       { "MacroDefinition",
         CXCursor_MacroDefinition },
       { "MacroExpansion",
         CXCursor_MacroExpansion },
+      { "MacroInstantiation",
+        CXCursor_MacroInstantiation },
       { "InclusionDirective",
         CXCursor_InclusionDirective },
+      /* { "LastPreprocessing", */
+      /*   CXCursor_LastPreprocessing }, */
+      /* { "FirstExtraDecl", */
+      /*   CXCursor_FirstExtraDecl }, */
       { "ModuleImportDecl",
         CXCursor_ModuleImportDecl },
+#if CINDEX_VERSION_MINOR >= 32
+      { "TypeAliasTemplateDecl",
+        CXCursor_TypeAliasTemplateDecl },
+#endif
+#if CINDEX_VERSION_MINOR >= 36
+      { "StaticAssert",
+        CXCursor_StaticAssert },
+      { "FriendDecl",
+        CXCursor_FriendDecl },
+#endif
+      /* { "LastExtraDecl", */
+      /*   CXCursor_LastExtraDecl }, */
+#if CINDEX_VERSION_MINOR >= 30
+      { "OverloadCandidate",
+        CXCursor_OverloadCandidate },
+#endif
       { NULL }
    };
 
@@ -1518,6 +1700,10 @@ static void createCXTypeTable(void)
         CXType_ObjCClass },
       { "ObjCSel",
         CXType_ObjCSel },
+#if CINDEX_VERSION_MINOR >= 35
+      { "Float128",
+        CXType_Float128 },
+#endif
       { "Complex",
         CXType_Complex },
       { "Pointer",
@@ -1554,6 +1740,14 @@ static void createCXTypeTable(void)
         CXType_DependentSizedArray },
       { "MemberPointer",
         CXType_MemberPointer },
+#if CINDEX_VERSION_MINOR >= 32
+      { "Auto",
+        CXType_Auto },
+#endif
+#if CINDEX_VERSION_MINOR >= 35
+      { "Elaborated",
+        CXType_Elaborated },
+#endif
       { NULL }
    };
 
@@ -1703,14 +1897,35 @@ static void createCallingConvTable(void)
         CXCallingConv_AAPCS },
       { "AAPCS_VFP",
         CXCallingConv_AAPCS_VFP },
+#if CINDEX_VERSION_MINOR >= 36
+      { "X86RegCall",
+        CXCallingConv_X86RegCall },
+#elif CINDEX_VERSION_MINOR >= 30
+      { "Unused", 8},
+#else
       { "PnaclCall",
         CXCallingConv_PnaclCall },
+#endif
       { "IntelOclBicc",
         CXCallingConv_IntelOclBicc },
       { "X86_64Win64",
         CXCallingConv_X86_64Win64 },
       { "X86_64SysV",
         CXCallingConv_X86_64SysV },
+#if CINDEX_VERSION_MINOR >= 30
+      { "X86VectorCall",
+        CXCallingConv_X86VectorCall },
+#endif
+#if CINDEX_VERSION_MINOR >= 34
+      { "Swift",
+        CXCallingConv_Swift },
+#endif
+#if CINDEX_VERSION_MINOR >= 35
+      { "PreserveMost",
+        CXCallingConv_PreserveMost },
+      { "PreserveAll",
+        CXCallingConv_PreserveAll },
+#endif
       { "Invalid",
         CXCallingConv_Invalid },
       { "Unexposed",
