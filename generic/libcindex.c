@@ -7008,6 +7008,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "restrictQualified",
         typeToBoolObjCmd,
         clang_isRestrictQualifiedType },
+#if CINDEX_VERSION_MINOR >= 38
+      { "transparentTagTypedef",
+        typeToBoolObjCmd,
+        clang_Type_isTransparentTagTypedef },
+#endif
       { "volatileQualified",
         typeToBoolObjCmd,
         clang_isVolatileQualifiedType },

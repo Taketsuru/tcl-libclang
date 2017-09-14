@@ -518,6 +518,9 @@ test cindex_type-0.0 "type / all subcommands" \
     type is functionTypeVariadic $mytype
     type is PODType $mytype
     type is restrictQualified $mytype
+    if {[::tcltest::testConstraint cindex0.38]} {
+        type is transparentTagTypedef $mytype
+    }
     type is volatileQualified $mytype
     if {[::tcltest::testConstraint cindex0.35]} {
         type namedType $mytype
