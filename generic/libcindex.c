@@ -1431,6 +1431,24 @@ static void createCursorKindTable(void)
       { "OMPTeamsDistributeSimdDirective",
         CXCursor_OMPTeamsDistributeSimdDirective },
 #endif
+#if CINDEX_VERSION_MINOR >= 37
+      { "OMPTeamsDistributeParallelForSimdDirective",
+        CXCursor_OMPTeamsDistributeParallelForSimdDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 38
+      { "OMPTeamsDistributeParallelForDirective",
+        CXCursor_OMPTeamsDistributeParallelForDirective },
+      { "OMPTargetTeamsDirective",
+        CXCursor_OMPTargetTeamsDirective },
+      { "OMPTargetTeamsDistributeDirective",
+        CXCursor_OMPTargetTeamsDistributeDirective },
+      { "OMPTargetTeamsDistributeParallelForDirective",
+        CXCursor_OMPTargetTeamsDistributeParallelForDirective },
+      { "OMPTargetTeamsDistributeParallelForSimdDirective",
+        CXCursor_OMPTargetTeamsDistributeParallelForSimdDirective },
+      { "OMPTargetTeamsDistributeSimdDirective",
+        CXCursor_OMPTargetTeamsDistributeSimdDirective },
+#endif
       /* { "LastStmt", */
       /*   CXCursor_LastStmt }, */
       { "TranslationUnit",
@@ -1505,6 +1523,10 @@ static void createCursorKindTable(void)
       /*   CXCursor_FirstExtraDecl }, */
       { "ModuleImportDecl",
         CXCursor_ModuleImportDecl },
+#if CINDEX_VERSION_MINOR >= 30
+      { "OverloadCandidate",
+        CXCursor_OverloadCandidate },
+#endif
 #if CINDEX_VERSION_MINOR >= 32
       { "TypeAliasTemplateDecl",
         CXCursor_TypeAliasTemplateDecl },
@@ -1708,6 +1730,10 @@ static void createCXTypeTable(void)
 #if CINDEX_VERSION_MINOR >= 35
       { "Float128",
         CXType_Float128 },
+#endif
+#if CINDEX_VERSION_MINOR >= 38
+      { "Half",
+        CXType_Half },
 #endif
       { "Complex",
         CXType_Complex },
@@ -6202,6 +6228,9 @@ static BitMask objCPropertyAttributes[] = {
    { "weak" },
    { "strong" },
    { "unsafe_unretained" },
+#if CINDEX_VERSION_MINOR >= 35
+   { "class" },
+#endif
    { NULL },
 };
 
