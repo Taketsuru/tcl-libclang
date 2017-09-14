@@ -941,7 +941,7 @@ static void tuDeleteProc(ClientData clientData)
    int      hash = tuHash(info->translationUnit);
    TUInfo **prev = &tuHashTable[hash];
    while (*prev != info) {
-      prev = &info->next;
+      prev = &((*prev)->next);
    }
    *prev = info->next;
 
