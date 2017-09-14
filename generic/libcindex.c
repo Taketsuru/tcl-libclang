@@ -5933,6 +5933,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "numElements",
         typeToLongLongObjCmd,
         clang_getNumElements },
+#if CINDEX_VERSION_MINOR >= 25
+      { "numTemplateArguments",
+        typeToIntObjCmd,
+        clang_Type_getNumTemplateArguments },
+#endif
       { "offsetof",
         typeOffsetOfObjCmd },
       { "pointeeType",
@@ -5947,6 +5952,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "spelling",
         typeToStringObjCmd,
         clang_getTypeSpelling },
+#if CINDEX_VERSION_MINOR >= 25
+      { "templateArguments",
+        typeUnsignedToTypeObjCmd,
+        clang_Type_getTemplateArgumentAsType },
+#endif
       { NULL }
    };
    createAndExportCommands(interp, "cindex::type::%s", typeCmdTable);
