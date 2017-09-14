@@ -5778,6 +5778,23 @@ int Cindex_Init(Tcl_Interp *interp)
       Tcl_DecrRefCount(value);
    }
 
+   {
+      Tcl_Obj *name =
+         Tcl_NewStringObj("cindex::version", -1);
+      Tcl_IncrRefCount(name);
+
+      Tcl_Obj *value = Tcl_ObjPrintf("%d.%d",
+                                     CINDEX_VERSION_MAJOR,
+                                     CINDEX_VERSION_MINOR);
+      Tcl_IncrRefCount(value);
+
+      Tcl_ObjSetVar2(interp, name, NULL, value, 0);
+      Tcl_Export(interp, cindexNs, "version", 0);
+
+      Tcl_DecrRefCount(name);
+      Tcl_DecrRefCount(value);
+   }
+
    Tcl_PkgProvide(interp, "cindex", PACKAGE_VERSION);
 
    return TCL_OK;

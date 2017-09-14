@@ -34,6 +34,12 @@ namespace import cindex::*
 
 tcltest::testConstraint hasBistCommand \
     [::expr {"" ne [info comm ::cindex::bist]}];
+for {set major 0} {$major < 1} {incr major} {
+    for {set minor 0} {$minor < 36} {incr minor} {
+        tcltest::testConstraint cindex$major.$minor \
+            [expr {[package vcompare $::cindex::version $major.$minor] >= 0}];
+    }
+}
 
 #------------------------------------------------------------------------ bist
 
