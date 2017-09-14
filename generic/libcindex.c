@@ -6441,6 +6441,12 @@ int Cindex_Init(Tcl_Interp *interp)
         cursorToBoolObjCmd,		clang_Cursor_isNull },
       { "valid",
         cursorToBoolObjCmd},
+#if CINDEX_VERSION_MINOR >= 33
+      { "macroFunctionLike",
+        cursorToBoolObjCmd,		clang_Cursor_isMacroFunctionLike },
+      { "macroBuiltin",
+        cursorToBoolObjCmd,		clang_Cursor_isMacroBuiltin },
+#endif
       { "objCOptional",
         cursorToBoolObjCmd,		clang_Cursor_isObjCOptional },
       { "preprocessing",
