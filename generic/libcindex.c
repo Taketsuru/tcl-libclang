@@ -4514,6 +4514,7 @@ static int indexNameOptionsObjCmd(ClientData     clientData,
 enum {
    parseOptions_parseLater,
    parseOptions_sourceFile,
+   parseOptions_precompiledFile,
    parseOptions_unsavedFile,
    parseOptions_firstFlag
 };
@@ -4521,6 +4522,7 @@ enum {
 static const char *parseOptions[] = {
    "-parseLater",
    "-sourceFile",
+   "-precompiledFile",
    "-unsavedFile",
 
    // flags
@@ -4552,7 +4554,11 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
       goto wrong_num_args;
    }
 
-   int         doParse         = 1;
+   enum {
+      parse_later,
+      parse_now,
+      parse_preparsed
+   }           when            = parse_now;
    unsigned    flags           = 0;
    const char *sourceFilename  = NULL;
    int         numUnsavedFiles = 0;
@@ -4582,7 +4588,7 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
 
       switch (optionNumber) {
       case parseOptions_parseLater: // -parseLater
-         doParse = 0;
+         when = parse_later;
          break;
 
       case parseOptions_sourceFile: // -sourceFile filename
@@ -4604,6 +4610,17 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
          ++numUnsavedFiles;
          Tcl_ListObjAppendElement(NULL, unsavedFileList, objv[++i]);
          Tcl_ListObjAppendElement(NULL, unsavedFileList, objv[++i]);
+         break;
+
+      case parseOptions_precompiledFile: // -precompiledFile filename
+         when = parse_preparsed;
+         if (objc <= i + 2) {
+            Tcl_WrongNumArgs(interp, i, objv, "-precompiledFile filename");
+            Tcl_DecrRefCount(unsavedFileList);
+            return TCL_ERROR;
+         }
+         sourceFilename = Tcl_GetStringFromObj(objv[i + 1], NULL);
+         ++i;
          break;
 
       default:
@@ -4630,15 +4647,23 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
 
    IndexInfo *parent = (IndexInfo *)clientData;
    CXTranslationUnit tu;
-   if (doParse) {
+   switch (when) {
+   case parse_now:
       tu = clang_parseTranslationUnit(parent->index, sourceFilename,
                                       (const char *const *)args, nargs,
                                       unsavedFiles, numUnsavedFiles, flags);
-   } else {
+      break;
+   case parse_later:
       tu = clang_createTranslationUnitFromSourceFile
          (parent->index, sourceFilename,
           nargs, (const char *const *)args,
           numUnsavedFiles, unsavedFiles);
+      break;
+   case parse_preparsed:
+      tu = clang_createTranslationUnit(parent->index, sourceFilename);
+      break;
+   default:
+      tu = NULL;
    }
 
    Tcl_Free((char *)unsavedFiles);
