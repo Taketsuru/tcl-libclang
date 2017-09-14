@@ -341,6 +341,7 @@ test indexName_translationUnit-1.0 "indexName translationUnit / all options" \
         -sourceFile [file join $basedir indexName_translationUnit-1.0.c] \
         -unsavedFile [file join $basedir indexName_translationUnit-1.0.h] "typedef int x;\n"\
         -- mytu
+    return
 }
 
 #------------------------------------------------- <translation unit instance>

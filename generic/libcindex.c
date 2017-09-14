@@ -4456,6 +4456,8 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
    Tcl_CreateObjCommand(interp, commandName,
                         tuInstanceObjCmd, info, tuDeleteProc);
 
+   Tcl_SetObjResult(interp, tuNameObj);
+
    return TCL_OK;
 
  wrong_num_args:
@@ -5014,6 +5016,7 @@ static int indexObjCmd(ClientData     clientData,
    Tcl_CreateObjCommand(interp, commandName,
                         indexNameObjCmd, info, indexDeleteProc);
 
+   Tcl_SetObjResult(interp, Tcl_NewStringObj(commandName, -1));
    return TCL_OK;
 
  usage_error:
