@@ -88,117 +88,115 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
     -setup $setupMytu \
     -cleanup $cleanupMytu \
 -body {
-    set root [mytu cursor]
-    cursor argument $root 0
-    cursor arguments $root
-    cursor availability $root
-    cursor briefCommentText $root
-    cursor canonicalCursor $root
-    cursor commentRange $root
-    cursor cxxAccessSpecifier $root
-    if {[::tcltest::testConstraint cindex0.32]} {
-        cursor cxxManglings $root
-    }
-    cursor definition $root
-    cursor displayName $root
-    cursor equal $root $root
-    cursor extent $root
-    if {[::tcltest::testConstraint cindex0.33]} {
-        cursor hasAttrs $root
-    }
-    cursor hash $root
-    cursor IBOutletCollectionType $root
-    if {[::tcltest::testConstraint cindex0.30]} {
-        cursor is anonymous $root
-    }
-    cursor is attribute $root
-    cursor is bitField $root
-    if {[::tcltest::testConstraint cindex0.32]} {
-        cursor is cxxFieldMutable $root
-    }
-    if {[::tcltest::testConstraint cindex0.25]} {
-        cursor is cxxMethodConst $root
-    }
-    if {[::tcltest::testConstraint cindex0.35]} {
-        cursor is cxxConstructorConverting $root
-        cursor is cxxConstructorCopy $root
-        cursor is cxxConstructorDefault $root
-        cursor is cxxConstructorMove $root
-        cursor is cxxMethodDefaulted $root
-    }
-    cursor is cxxMethodPureVirtual $root
-    cursor is cxxMethodStatic $root
-    cursor is cxxMethodVirtual $root
-    cursor is declaration $root
-    cursor is definition $root
-    cursor is dynamicCall $root
-    cursor is unexposed $root
-    if {[::tcltest::testConstraint cindex0.33]} {
-        cursor is functionInlined $root
-    }
-    cursor is expression $root
-    cursor is invalid $root
-    if {[::tcltest::testConstraint cindex0.33]} {
-        cursor is macroFunctionLike $root
-        cursor is macroBuiltin $root
-    }
-    cursor is null $root
-    cursor is objCOptional $root
-    cursor is preprocessing $root
-    cursor is reference $root
-    cursor is statement $root
-    cursor is translationUnit $root
-    cursor is variadic $root
-    cursor is virtualBase $root
-    cursor includedFile $root
-    cursor language $root
-    cursor lexicalParent $root
-    cursor linkage $root
-    cursor location $root
-    cursor null
-    cursor numArguments $root
-    cursor numOverloadedDecls $root;
-    cursor objCDeclQualifiers $root
-    cursor objCPropertyAttributes $root
-    cursor objCSelectorIndex $root
-    cursor objCTypeEncoding $root
-    cursor overloadedDecl $root 0
-    cursor overloadedDecls $root
-    cursor overriddenCursors $root
-    cursor platformAvailability $root
-    cursor rawCommentText $root
-    cursor receiverType $root
-    cursor referenced $root
-    cursor referenceNameRange $root 0
-    cursor resultType $root
-    cursor semanticParent $root
-    cursor specializedTemplate $root
-    cursor spelling $root
-    cursor spellingNameRange $root 0
-    if {[::tcltest::testConstraint cindex0.29]} {
-        cursor storageClass $root
-    }
-    cursor translationUnit $root
-    cursor templateCursorKind $root
-    cursor type $root
-    cursor typedefDeclUnderlyingType $root
-    cursor USR $root
-    if {[::tcltest::testConstraint cindex0.32]} {
-        cursor visibility $root
-    }
-    cursor foreachChild $root child {
-        switch -- [lindex $child 0] {
+    cursor foreachChild [mytu cursor] cx {
+        cursor argument $cx 0
+        cursor arguments $cx
+        cursor availability $cx
+        cursor briefCommentText $cx
+        cursor canonicalCursor $cx
+        cursor commentRange $cx
+        cursor cxxAccessSpecifier $cx
+        if {[::tcltest::testConstraint cindex0.32]} {
+            cursor cxxManglings $cx
+        }
+        cursor definition $cx
+        cursor displayName $cx
+        cursor equal $cx $cx
+        cursor extent $cx
+        if {[::tcltest::testConstraint cindex0.33]} {
+            cursor hasAttrs $cx
+        }
+        cursor hash $cx
+        cursor IBOutletCollectionType $cx
+        if {[::tcltest::testConstraint cindex0.30]} {
+            cursor is anonymous $cx
+        }
+        cursor is attribute $cx
+        cursor is bitField $cx
+        if {[::tcltest::testConstraint cindex0.32]} {
+            cursor is cxxFieldMutable $cx
+        }
+        if {[::tcltest::testConstraint cindex0.25]} {
+            cursor is cxxMethodConst $cx
+        }
+        if {[::tcltest::testConstraint cindex0.35]} {
+            cursor is cxxConstructorConverting $cx
+            cursor is cxxConstructorCopy $cx
+            cursor is cxxConstructorDefault $cx
+            cursor is cxxConstructorMove $cx
+            cursor is cxxMethodDefaulted $cx
+        }
+        cursor is cxxMethodPureVirtual $cx
+        cursor is cxxMethodStatic $cx
+        cursor is cxxMethodVirtual $cx
+        cursor is declaration $cx
+        cursor is definition $cx
+        cursor is dynamicCall $cx
+        if {[::tcltest::testConstraint cindex0.33]} {
+            cursor is functionInlined $cx
+        }
+        cursor is expression $cx
+        cursor is invalid $cx
+        if {[::tcltest::testConstraint cindex0.33]} {
+            cursor is macroFunctionLike $cx
+            cursor is macroBuiltin $cx
+        }
+        cursor is null $cx
+        cursor is objCOptional $cx
+        cursor is preprocessing $cx
+        cursor is reference $cx
+        cursor is statement $cx
+        cursor is translationUnit $cx
+        cursor is unexposed $cx
+        cursor is variadic $cx
+        cursor is virtualBase $cx
+        cursor includedFile $cx
+        cursor language $cx
+        cursor lexicalParent $cx
+        cursor linkage $cx
+        cursor location $cx
+        cursor null
+        cursor numArguments $cx
+        cursor numOverloadedDecls $cx;
+        cursor objCDeclQualifiers $cx
+        cursor objCPropertyAttributes $cx
+        cursor objCSelectorIndex $cx
+        cursor objCTypeEncoding $cx
+        cursor overloadedDecl $cx 0
+        cursor overloadedDecls $cx
+        cursor overriddenCursors $cx
+        cursor platformAvailability $cx
+        cursor rawCommentText $cx
+        cursor receiverType $cx
+        cursor referenced $cx
+        cursor referenceNameRange $cx 0
+        cursor resultType $cx
+        cursor semanticParent $cx
+        cursor specializedTemplate $cx
+        cursor spelling $cx
+        cursor spellingNameRange $cx 0
+        if {[::tcltest::testConstraint cindex0.29]} {
+            cursor storageClass $cx
+        }
+        cursor translationUnit $cx
+        cursor templateCursorKind $cx
+        cursor type $cx
+        cursor typedefDeclUnderlyingType $cx
+        cursor USR $cx
+        if {[::tcltest::testConstraint cindex0.32]} {
+            cursor visibility $cx
+        }
+        switch -- [lindex $cx 0] {
             EnumDecl {
-                cursor enumDeclIntegerType $child
-                recurse
-            } EnumConstantDecl {
-                cursor enumConstantDeclValue $child
-            } StructDecl {
-                recurse
-            } FieldDecl {
-                cursor fieldDeclBitWidth $child
+                cursor enumDeclIntegerType $cx
+            }
+            EnumConstantDecl {
+                cursor enumConstantDeclValue $cx
+            }
+            FieldDecl {
+                cursor fieldDeclBitWidth $cx
                 if {[::tcltest::testConstraint cindex0.30]} {
-                    cursor offsetOfField $child
+                    cursor offsetOfField $cx
                 }
             }
             VarDecl {
@@ -207,6 +205,7 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
                 }
             }
         }
+        recurse
     }
     return
 }
@@ -501,40 +500,43 @@ test cindex_type-0.0 "type / all subcommands" \
 -setup $setupMytu \
 -cleanup $cleanupMytu \
 -body {
-    set mytype [cursor type [mytu cursor]]
-    type alignof $mytype
-    type argType $mytype 0
-    type argTypes $mytype
-    type arrayElementType $mytype
-    type arraySize $mytype
-    type canonicalType $mytype
-    type classType $mytype
-    type cxxRefQualifier $mytype
-    type declaration $mytype
-    type elementType $mytype
-    type equal $mytype $mytype
-    type functionTypeCallingConvention $mytype
-    type is constQualified $mytype
-    type is functionTypeVariadic $mytype
-    type is PODType $mytype
-    type is restrictQualified $mytype
-    if {[::tcltest::testConstraint cindex0.38]} {
-        type is transparentTagTypedef $mytype
+    cursor foreachChild [mytu cursor] cx {
+        set tx [cursor type $cx]
+        type alignof $tx
+        type argType $tx 0
+        type argTypes $tx
+        type arrayElementType $tx
+        type arraySize $tx
+        type canonicalType $tx
+        type classType $tx
+        type cxxRefQualifier $tx
+        type declaration $tx
+        type elementType $tx
+        type equal $tx $tx
+        type functionTypeCallingConvention $tx
+        type is constQualified $tx
+        type is functionTypeVariadic $tx
+        type is PODType $tx
+        type is restrictQualified $tx
+        if {[::tcltest::testConstraint cindex0.38]} {
+            type is transparentTagTypedef $tx
+        }
+        type is volatileQualified $tx
+        if {[::tcltest::testConstraint cindex0.35]} {
+            type namedType $tx
+        }
+        type numArgTypes $tx
+        type numElements $tx
+        type offsetof $tx test
+        if {[::tcltest::testConstraint cindex0.33]} {
+            type objCEncoding $tx
+        }
+        type pointeeType $tx
+        type resultType $tx
+        type sizeof $tx
+        type spelling $tx
+        recurse
     }
-    type is volatileQualified $mytype
-    if {[::tcltest::testConstraint cindex0.35]} {
-        type namedType $mytype
-    }
-    type numArgTypes $mytype
-    type numElements $mytype
-    type offsetof $mytype test
-    if {[::tcltest::testConstraint cindex0.33]} {
-         type objCEncoding $mytype
-    }
-    type pointeeType $mytype
-    type resultType $mytype
-    type sizeof $mytype
-    type spelling $mytype
     return
 }
 

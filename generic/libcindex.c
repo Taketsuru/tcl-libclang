@@ -2873,7 +2873,7 @@ static int cursorPlatformAvailabilityObjCmd(ClientData     clientData,
       elms[platform_tag_ix]
          = availabilityPlatformTagObj;
       elms[platform_ix]
-         = convertCXStringToObj(availability[i].Platform);
+         = Tcl_NewStringObj(clang_getCString(availability[i].Platform), -1);
 
       elms[introduced_tag_ix]
          = availabilityIntroducedTagObj;
@@ -2898,7 +2898,7 @@ static int cursorPlatformAvailabilityObjCmd(ClientData     clientData,
       elms[message_tag_ix]
          = availabilityMessageTagObj;
       elms[message_ix]
-         = convertCXStringToObj(availability[i].Message);
+         = Tcl_NewStringObj(clang_getCString(availability[i].Message), -1);
 
       Tcl_Obj *elm = Tcl_NewListObj(nelms, elms);
       Tcl_ListObjAppendElement(NULL, resultElms[i], elm);
