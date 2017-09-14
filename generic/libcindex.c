@@ -128,6 +128,25 @@ createNameValueTable(Tcl_Obj             **valueToNameDictPtr,
    }
 }
 
+// Qualify an unqualified command name with the interpreter's current namespace.
+static void newQualifiedName(Tcl_Interp *interp, Tcl_Obj *nameObj, Tcl_Obj **qnameObj) {
+   char *name = Tcl_GetString(nameObj);
+   if (!strstr(name, "::")) {
+      Tcl_DString ds;
+      Tcl_DStringInit(&ds);
+      Tcl_Namespace *ns;
+      ns = Tcl_GetCurrentNamespace(interp);
+      if (ns != Tcl_GetGlobalNamespace(interp)) {
+         Tcl_DStringAppend(&ds, ns->fullName, -1);
+      }
+      Tcl_DStringAppend(&ds, "::", 2);
+      Tcl_DStringAppend(&ds, name, -1);
+      *qnameObj = Tcl_NewStringObj(Tcl_DStringValue(&ds), Tcl_DStringLength(&ds));
+   } else {
+      *qnameObj = nameObj;
+   }
+}
+
 //-------------------------------------------------------------- integer types
 
 static Tcl_Obj *newBignumObj(uintmax_t value, int negative)
@@ -5008,18 +5027,20 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   const char *commandName = Tcl_GetStringFromObj(tuNameObj, NULL);
-   Tcl_Command cmd = Tcl_CreateObjCommand(interp, commandName,
+   Tcl_Obj *commandNameObj = NULL;
+   newQualifiedName(interp, tuNameObj, &commandNameObj);
+
+   Tcl_Command cmd = Tcl_CreateObjCommand(interp, Tcl_GetString(commandNameObj),
                                           tuInstanceObjCmd, NULL, tuDeleteProc);
    Tcl_CmdInfo cmdinfo;
-   TUInfo     *info        = createTUInfo(parent, cmd, tu);
+   TUInfo     *info = createTUInfo(parent, cmd, tu);
    Tcl_GetCommandInfoFromToken(cmd, &cmdinfo);
    cmdinfo.objClientData = info;
    cmdinfo.clientData = info;
    cmdinfo.deleteData = info;
    Tcl_SetCommandInfoFromToken(cmd, &cmdinfo);
 
-   Tcl_SetObjResult(interp, tuNameObj);
+   Tcl_SetObjResult(interp, commandNameObj);
 
    return TCL_OK;
 
@@ -5663,7 +5684,7 @@ static int indexObjCmd(ClientData     clientData,
       NULL
    };
 
-   const char *commandName = NULL;
+   Tcl_Obj *ixNameObj = NULL;
    unsigned    mask        = 0;
    for (int i = 1; i < objc; ++i) {
       const char *obj = Tcl_GetStringFromObj(objv[i], NULL);
@@ -5679,15 +5700,15 @@ static int indexObjCmd(ClientData     clientData,
          mask |= 1 << option;
 
       } else {
-         if (commandName != NULL) {
+         if (ixNameObj != NULL) {
             goto usage_error;
          }
 
-         commandName = Tcl_GetStringFromObj(objv[i], NULL);
+         ixNameObj = objv[i];
       }
    }
 
-   if (commandName == NULL) {
+   if (ixNameObj == NULL) {
       goto usage_error;
    }
 
@@ -5699,10 +5720,14 @@ static int indexObjCmd(ClientData     clientData,
 
    IndexInfo *info = createIndexInfo(interp, index);
 
-   Tcl_CreateObjCommand(interp, commandName,
+
+   Tcl_Obj *commandNameObj = NULL;
+   newQualifiedName(interp, ixNameObj, &commandNameObj);
+
+   Tcl_CreateObjCommand(interp, Tcl_GetString(commandNameObj),
                         indexNameObjCmd, info, indexDeleteProc);
 
-   Tcl_SetObjResult(interp, Tcl_NewStringObj(commandName, -1));
+   Tcl_SetObjResult(interp, commandNameObj);
    return TCL_OK;
 
  usage_error:
