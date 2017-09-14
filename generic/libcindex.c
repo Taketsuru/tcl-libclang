@@ -5387,15 +5387,6 @@ static int rangeToLocationObjCmd(ClientData     clientData,
 
 //------------------------------------------------------- foreachChild command
 
-struct ForeachChildInfo
-{
-   Tcl_Interp *interp;
-   Tcl_Obj    *childName;
-   Tcl_Obj    *parentName;
-   Tcl_Obj    *scriptObj;
-   int         returnCode;
-};
-
 static enum CXChildVisitResult foreachChildHelper(CXCursor     cursor,
                                                   CXCursor     parent,
                                                   CXClientData clientData)
@@ -5404,20 +5395,22 @@ static enum CXChildVisitResult foreachChildHelper(CXCursor     cursor,
    Tcl_Obj *childObj = NULL;
    Tcl_Obj *parentObj = NULL;
 
-   struct ForeachChildInfo *visitInfo = (struct ForeachChildInfo *)clientData;
+   VisitInfo *visitInfo = (VisitInfo *)clientData;
 
+   Tcl_Obj *childVariableName = visitInfo->variableNames[0];
    childObj = newCursorObj(cursor);
    Tcl_IncrRefCount(childObj);
-   if (Tcl_ObjSetVar2(visitInfo->interp, visitInfo->childName,
+   if (Tcl_ObjSetVar2(visitInfo->interp, childVariableName,
                       NULL, childObj, TCL_LEAVE_ERR_MSG) == NULL) {
       status = TCL_ERROR;
       goto cleanup;
    }
 
-   if (visitInfo->parentName != NULL) {
+   if (visitInfo->numVariables == 2) {
+      Tcl_Obj *parentVariableName = visitInfo->variableNames[1];
       parentObj = newCursorObj(parent);
       Tcl_IncrRefCount(parentObj);
-      if (Tcl_ObjSetVar2(visitInfo->interp, visitInfo->parentName,
+      if (Tcl_ObjSetVar2(visitInfo->interp, parentVariableName,
                          NULL, parentObj, TCL_LEAVE_ERR_MSG) == NULL) {
          status = TCL_ERROR;
          goto cleanup;
@@ -5433,6 +5426,7 @@ cleanup:
    if (parentObj) {
       Tcl_DecrRefCount(parentObj);
    }
+
    switch (status) {
    case TCL_OK:
    case TCL_CONTINUE:
@@ -5492,10 +5486,10 @@ static int foreachChildObjCmd(ClientData     clientData,
       goto cleanup;
    }
 
-   struct ForeachChildInfo visitInfo = {
+   VisitInfo visitInfo = {
       .interp     = interp,
-      .childName  = varNames[0],
-      .parentName = numVars == 2 ? varNames[1] : NULL,
+      .variableNames = varNames,
+      .numVariables = numVars,
       .scriptObj  = objv[script_ix],
       .returnCode = TCL_OK,
    };
