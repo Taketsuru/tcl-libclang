@@ -2356,6 +2356,55 @@ static int typeToLayoutLongLongObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+//-------------------------------------------------- type -> type list command
+
+typedef struct TypeToTypeListInfo {
+    int (*getNum)(CXType);
+    CXType (*getIndex)(CXType, unsigned);
+} TypeToTypeListInfo;
+
+static int typeToTypeListObjCmd(ClientData     clientData,
+                                Tcl_Interp    *interp,
+                                int            objc,
+                                Tcl_Obj *const objv[]) {
+   enum {
+      command_ix,
+      type_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "type");
+      return TCL_ERROR;
+   }
+
+   CXType type;
+   int status = getTypeFromObj(interp, objv[type_ix], &type);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   TypeToTypeListInfo *procs = ((TypeToTypeListInfo *)clientData);
+
+   int num = procs->getNum(type);
+   if (num > 0) {
+      Tcl_Obj **results
+         = (Tcl_Obj **)Tcl_Alloc(sizeof(Tcl_Obj *) * num);
+      for (int i = 0; i < num; i++) {
+         results[i] = newTypeObj(procs->getIndex(type, i));
+      }
+
+      Tcl_Obj *resultObj = Tcl_NewListObj(num, results);
+      Tcl_SetObjResult(interp, resultObj);
+
+      Tcl_Free((char *)results);
+   } else {
+      Tcl_SetObjResult(interp, Tcl_NewListObj(0, NULL));
+   }
+
+   return TCL_OK;
+}
+
 //------------------------------------------------------ cursor::equal command
 
 static int cursorEqualObjCmd(ClientData     clientData,
@@ -3318,6 +3367,103 @@ static int cursorToKindToBoolObjCmd(ClientData     clientData,
    int                result    = proc(kind) != 0;
    Tcl_Obj           *resultObj = Tcl_NewIntObj(result);
    Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
+//---------------------------------------------- cursor -> cursor list command
+
+typedef struct CursorToCursorListInfo {
+   union {
+      unsigned (*getNumUnsigned)(CXCursor);
+      int (*getNumInt)(CXCursor);
+   };
+   CXCursor (*getIndex)(CXCursor, unsigned);
+   enum {
+      CursorToCursorListInfo_Int,
+      CursorToCursorListInfo_Unsigned
+   } returnType;
+} CursorToCursorListInfo;
+
+static int cursorToCursorListObjCmd(ClientData     clientData,
+                                       Tcl_Interp    *interp,
+                                       int            objc,
+                                       Tcl_Obj *const objv[]) {
+   enum {
+      command_ix,
+      cursor_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   CXCursor cursor;
+   int status = getCursorFromObj(interp, objv[cursor_ix], &cursor);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CursorToCursorListInfo *procs = ((CursorToCursorListInfo *)clientData);
+   unsigned num = 0;
+   switch (procs->returnType) {
+   case CursorToCursorListInfo_Unsigned:
+      num = procs->getNumUnsigned(cursor);
+      break;
+   case CursorToCursorListInfo_Int:
+      {
+         int tmp = procs->getNumInt(cursor);
+         num = (unsigned)(tmp < 0? 0 : tmp);
+         break;
+      }
+   }
+   if (num > 0) {
+      Tcl_Obj **results
+         = (Tcl_Obj **)Tcl_Alloc(sizeof(Tcl_Obj *) * num);
+      for (int i = 0; i < num; i++) {
+         results[i] = newCursorObj(procs->getIndex(cursor, i));
+      }
+
+      Tcl_Obj *resultObj = Tcl_NewListObj(num, results);
+      Tcl_SetObjResult(interp, resultObj);
+
+      Tcl_Free((char *)results);
+   }
+
+   return TCL_OK;
+}
+
+//------------------------ translation unit instance's diagnostic list command
+
+static int tuDiagnosticListObjCmd(ClientData     clientData,
+                                  Tcl_Interp    *interp,
+                                  int            objc,
+                                  Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "");
+      return TCL_ERROR;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   unsigned numDiags = clang_getNumDiagnostics(info->translationUnit);
+   Tcl_Obj **diags = (Tcl_Obj **)Tcl_Alloc(numDiags * sizeof(Tcl_Obj *));
+   for (int i = 0; i < numDiags; i++) {
+      CXDiagnostic  diagnostic = clang_getDiagnostic(info->translationUnit, i);
+      diags[i] = newDiagnosticObj(diagnostic);
+      clang_disposeDiagnostic(diagnostic);
+   }
+   Tcl_SetObjResult(interp, Tcl_NewListObj(numDiags, diags));
+
+   Tcl_Free((char *)diags);
 
    return TCL_OK;
 }
@@ -4555,6 +4701,8 @@ static int tuInstanceObjCmd(ClientData     clientData,
         tuCursorObjCmd },
       { "diagnostic",
         tuDiagnosticObjCmd },
+      { "diagnostics",
+        tuDiagnosticListObjCmd },
 #if CINDEX_VERSION_MINOR >= 13
       { "findIncludes",
         tuFindIncludesObjCmd },
@@ -5759,10 +5907,23 @@ int Cindex_Init(Tcl_Interp *interp)
       .masks = objCPropertyAttributes
    };
 
+   static CursorToCursorListInfo argumentsInfo;
+   argumentsInfo.getNumInt = &clang_Cursor_getNumArguments;
+   argumentsInfo.getIndex = &clang_Cursor_getArgument;
+   argumentsInfo.returnType = CursorToCursorListInfo_Int;
+
+   static CursorToCursorListInfo overloadedDeclsInfo;
+   overloadedDeclsInfo.getNumUnsigned = &clang_getNumOverloadedDecls;
+   overloadedDeclsInfo.getIndex = &clang_getOverloadedDecl;
+   overloadedDeclsInfo.returnType = CursorToCursorListInfo_Unsigned;
+
    static Command cursorCmdTable[] = {
       { "argument",
         cursorUnsignedToCursorObjCmd,
         clang_Cursor_getArgument },
+      { "arguments",
+        cursorToCursorListObjCmd,
+        &argumentsInfo },
       { "availability",
         cursorToEnumObjCmd,
         &cursorAvailabilityInfo },
@@ -5841,6 +6002,9 @@ int Cindex_Init(Tcl_Interp *interp)
       { "overloadedDecl",
         cursorUnsignedToCursorObjCmd,
         clang_getOverloadedDecl },
+      { "overloadedDecls",
+        cursorToCursorListObjCmd,
+        &overloadedDeclsInfo },
       { "overriddenCursors",
         cursorOverriddenCursorsObjCmd },
       { "platformAvailability",
@@ -6038,6 +6202,10 @@ int Cindex_Init(Tcl_Interp *interp)
    functionTypeCallingConvInfo.names = callingConvNames;
    Tcl_IncrRefCount(callingConvNames);
 
+   static TypeToTypeListInfo argTypesInfo;
+   argTypesInfo.getNum = clang_getNumArgTypes;
+   argTypesInfo.getIndex = clang_getArgType;
+
    static Command typeCmdTable[] = {
       { "alignof",
         typeToLayoutLongLongObjCmd,	
@@ -6045,6 +6213,9 @@ int Cindex_Init(Tcl_Interp *interp)
       { "argType",
         typeUnsignedToTypeObjCmd,
         clang_getArgType },
+      { "argTypes",
+        typeToTypeListObjCmd,
+        &argTypesInfo },
       { "arrayElementType",
         typeToTypeObjCmd,
         clang_getArrayElementType },
@@ -6097,7 +6268,7 @@ int Cindex_Init(Tcl_Interp *interp)
         typeToStringObjCmd,
         clang_getTypeSpelling },
 #if CINDEX_VERSION_MINOR >= 25
-      { "templateArguments",
+      { "templateArgument",
         typeUnsignedToTypeObjCmd,
         clang_Type_getTemplateArgumentAsType },
 #endif

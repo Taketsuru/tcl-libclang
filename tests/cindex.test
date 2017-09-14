@@ -55,12 +55,8 @@ set setupMytu {
     myindex translationUnit \
         -detailedPreprocessingRecord -- mytu $fn -I$::env(CLANG_BUILTIN_HEADER_INCLUDE_DIR) {*}$::env(COMPILE_FLAGS)
     set numDiag [mytu diagnostic num];
-    set diagnostics {};
-    for {set i 0} {$i < $numDiag} {incr i} {
-	lappend diagnostics [mytu diagnostic decode $i];
-    }
     if {$numDiag > 0} {
-	::error [join $diagnostics \n];
+	::error [join [mytu diagnostics] \n];
     }
 }
 
@@ -76,6 +72,7 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
 -body {
     set root [mytu cursor]
     cursor argument $root 0
+    cursor arguments $root
     cursor availability $root
     cursor briefCommentText $root
     cursor canonicalCursor $root
@@ -119,6 +116,7 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
     cursor objCSelectorIndex $root
     cursor objCTypeEncoding $root
     cursor overloadedDecl $root 0
+    cursor overloadedDecls $root
     cursor overriddenCursors $root
     cursor platformAvailability $root
     cursor rawCommentText $root
@@ -146,6 +144,37 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
                 recurse
             } FieldDecl {
                 cursor fieldDeclBitWidth $child
+            }
+        }
+    }
+    return
+}
+
+test cindex_cursor-2.0 "cursor / numArguments/argument/arguments" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    foreachChild cursor [mytu cursor] {
+        if {[lindex $cursor 0] eq "FunctionDecl"} {
+            foreach subcmd {argument overloadedDecl} {
+                set numsubcmd "num[string toupper [string index $subcmd 0]][string range $subcmd 1 end]s";
+                set getsubcmd $subcmd
+                set listsubcmd "${subcmd}s";
+                set N [cursor $numsubcmd $cursor]
+                set elems [cursor $listsubcmd $cursor]
+                for {set i 0} {$i < $N} {incr i} {
+                    if {[cursor $getsubcmd $cursor $i] ne [lindex $elems $i]} {
+                        ::error "different arguments"
+                    }
+                }
+            }
+            set type [cursor type $cursor];
+            set numArgTypes [type numArgTypes $type];
+            set argTypes [type argTypes $type];
+            for {set i 0} {$i < $numArgTypes} {incr i} {
+                if {[type argType $type $i] ne [lindex $argTypes $i]} {
+                    ::error "different argument types";
+                }
             }
         }
     }
@@ -249,6 +278,7 @@ test cindex_type-0.0 "type / all subcommands" \
     set mytype [cursor type [mytu cursor]]
     type alignof $mytype
     type argType $mytype 0
+    type argTypes $mytype
     type arrayElementType $mytype
     type arraySize $mytype
     type canonicalType $mytype
@@ -402,6 +432,24 @@ test translationUnitInclusions-0.0 "cursor / inclusions" \
         }
         return $found
     } -result 1
+
+#------------------------------------- <translation unit instance> diagnostics
+
+test translationUnitDiagnostics-0.0 "translationUnit / diagnostics" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata index-1.0.c]
+    index myindex
+    myindex translationUnit mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    set numDiags [mytu diagnostic num];
+    set diagnostics [mytu diagnostics];
+    for {set i 0} {$i < $numDiags} {incr i} {
+        if {[mytu diagnostic decode $i] ne [lindex $diagnostics $i]} {
+            ::error "different diagnostics";
+        }
+    }
+}
 
 #-------------------------------------- <translation unit instance> diagnostic
 
