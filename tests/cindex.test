@@ -754,6 +754,28 @@ test translationUnitDiagnostics-0.0 "translationUnit / diagnostics" -setup {
 
 #-------------------------------------------- <translation unit instance> save
 
+#----------------------------------- <translation unit instance> skippedRanges
+
+test translationUnitSkippedRanges-1.0 "cursor / skippedRanges" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata translationUnitSkippedRanges-1.0.c]
+    index myindex
+    myindex translationUnit -detailedPreprocessingRecord -- mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    llength [mytu skippedRanges [mytu sourceFile]];
+} -result 1 -constraints cindex0.22;
+
+test translationUnitSkippedRanges-2.0 "cursor / allSkippedRanges" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata translationUnitSkippedRanges-1.0.c]
+    index myindex
+    myindex translationUnit -detailedPreprocessingRecord -- mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    llength [mytu skippedRanges];
+} -result 1 -constraints cindex0.36;
+
 #-------------------------------------- <translation unit instance> sourceFile
 
 #---------------------------------------- <translation unit instance> uniqueID

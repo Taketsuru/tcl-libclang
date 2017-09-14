@@ -722,6 +722,20 @@ static int getRangeFromObj(Tcl_Interp    *interp,
    return TCL_ERROR;
 }
 
+#if CINDEX_VERSION_MINOR >= 22
+static Tcl_Obj *newRangeListObj(CXSourceRangeList *rangeList)
+{
+   Tcl_Obj *resultObj = Tcl_NewListObj(0, NULL);
+
+   for (int i = 0; i < rangeList->count; i++) {
+      Tcl_Obj *rangeObj = newRangeObj(rangeList->ranges[i]);
+      Tcl_ListObjAppendElement(NULL, resultObj, rangeObj);
+   }
+
+   return resultObj;
+}
+#endif
+
 static Tcl_Obj *newPresumedLocationObj(CXSourceLocation location)
 {
    enum {
@@ -4531,6 +4545,68 @@ static int tuSaveObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+#if CINDEX_VERSION_MINOR >= 22
+//-------------------------- translation unit instance's skippedRanges command
+
+static int tuSkippedRangesObjCmd(ClientData     clientData,
+                                 Tcl_Interp    *interp,
+                                 int            objc,
+                                 Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      filename_ix,
+      nargs
+   };
+
+#if CINDEX_VERSION_MINOR >= 36
+   int margs = filename_ix;
+   const char *argspec = "?filename?";
+#else
+   int margs = nargs;
+   const char *argspec = "filename";
+#endif
+
+   if (objc < margs || objc > nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, argspec);
+      return TCL_ERROR;
+   }
+
+   Tcl_Obj *resultObj = NULL;
+   int      status    = TCL_OK;
+
+   if (objc == nargs) {         // filename provided
+      TUInfo *info = (TUInfo *)clientData;
+
+      CXFile file;
+      status = getFileFromObj(interp, info->translationUnit,
+                                  objv[filename_ix], &file);
+      if (status != TCL_OK) {
+         return status;
+      }
+
+      CXSourceRangeList *skippedRanges = clang_getSkippedRanges(info->translationUnit, file);
+      resultObj = newRangeListObj(skippedRanges);
+      clang_disposeSourceRangeList(skippedRanges);
+   } else {
+#if CINDEX_VERSION_MINOR >= 36
+      TUInfo *info = (TUInfo *)clientData;
+
+      CXSourceRangeList *skippedRanges = clang_getAllSkippedRanges(info->translationUnit);
+      resultObj = newRangeListObj(skippedRanges);
+      clang_disposeSourceRangeList(skippedRanges);
+#else
+      resultObj = Tcl_NewStringObj("must indicate the filename", -1);
+      status = TCL_ERROR;
+#endif
+   }
+
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+#endif
+
 //----------------------------- translation unit instance's sourceFile command
 
 static int tuSourceFileObjCmd(ClientData     clientData,
@@ -4777,6 +4853,8 @@ static int tuInstanceObjCmd(ClientData     clientData,
         tuSaveObjCmd },
       { "sourceFile",
         tuSourceFileObjCmd },
+      { "skippedRanges",
+        tuSkippedRangesObjCmd },
       { "uniqueID",
         tuUniqueIDObjCmd },
       { NULL },
