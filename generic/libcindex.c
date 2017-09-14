@@ -1,5 +1,6 @@
 //============================================================================
 
+// Copyright (c) 2016 Patzschke + Rasp Software GmbH, Wiesbaden <amcalvo@prs.de>.
 // Copyright (c) 2014 Taketsuru <taketsuru11@gmail.com>.
 // All rights reserved.
 
