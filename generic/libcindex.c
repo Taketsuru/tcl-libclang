@@ -5448,7 +5448,7 @@ int Cindex_Init(Tcl_Interp *interp)
       { "objCTypeEncoding",
         cursorToStringObjCmd,
         clang_getDeclObjCTypeEncoding },
-      { "overloadedDecls",
+      { "overloadedDecl",
         cursorUnsignedToCursorObjCmd,
         clang_getOverloadedDecl },
       { "overriddenCursors",
