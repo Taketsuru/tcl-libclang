@@ -118,6 +118,7 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
         cursor is cxxConstructorCopy $root
         cursor is cxxConstructorDefault $root
         cursor is cxxConstructorMove $root
+        cursor is cxxMethodDefaulted $root
     }
     cursor is cxxMethodPureVirtual $root
     cursor is cxxMethodStatic $root

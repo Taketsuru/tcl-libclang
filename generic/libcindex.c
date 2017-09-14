@@ -6415,6 +6415,10 @@ int Cindex_Init(Tcl_Interp *interp)
       { "cxxMethodConst",
         cursorToBoolObjCmd,		clang_CXXMethod_isConst },
 #endif
+#if CINDEX_VERSION_MINOR >= 35
+      { "cxxMethodDefaulted",
+        cursorToBoolObjCmd,		clang_CXXMethod_isDefaulted },
+#endif
       { "cxxMethodPureVirtual",
         cursorToBoolObjCmd,		clang_CXXMethod_isPureVirtual },
       { "cxxMethodStatic",
