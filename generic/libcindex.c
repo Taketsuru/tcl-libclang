@@ -4808,6 +4808,106 @@ static int tuSkippedRangesObjCmd(ClientData     clientData,
 
    return TCL_OK;
 }
+
+#endif
+#if CINDEX_VERSION_MINOR >= 38
+//----------------------------- translation unit instance's targetInfo command
+
+static int tuTargetInfoObjCmd(ClientData     clientData,
+                              Tcl_Interp    *interp,
+                              int            objc,
+                              Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      subcommand_ix,
+      numMandatoryArgs
+   };
+
+   if (objc < numMandatoryArgs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "subcommand");
+      return TCL_ERROR;
+   }
+
+   static Command subcommands[] = {
+      { "triple",
+        tuTargetInfoTripleObjCmd },
+      { "pointerWidth",
+        tuTargetInfoPointerWidthObjCmd },
+      { NULL },
+   };
+
+   int commandNumber;
+   int status = Tcl_GetIndexFromObjStruct(interp, objv[subcommand_ix],
+                                          subcommands, sizeof subcommands[0],
+                                          "subcommand", 0, &commandNumber);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   return subcommands[commandNumber].proc(clientData, interp,
+                                          objc - subcommand_ix,
+                                          objv + subcommand_ix);
+}
+
+//------------------------translation unit instance's targetInfoTriple command
+
+static int tuTargetInfoTripleObjCmd(ClientData     clientData,
+                                    Tcl_Interp    *interp,
+                                    int            objc,
+                                    Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "");
+      return TCL_ERROR;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   CXTargetInfo  targetinfo = clang_getTranslationUnitTargetInfo(info->translationUnit);
+   CXString      triple     = clang_TargetInfo_getTriple(targetinfo);
+   Tcl_Obj      *resultObj  = convertCXStringToObj(triple);
+   Tcl_SetObjResult(interp, resultObj);
+
+   clang_TargetInfo_dispose(targetinfo);
+
+   return TCL_OK;
+}
+
+//------------------translation unit instance's targetInfoPointerWidth command
+
+static int tuTargetInfoPointerWidthObjCmd(ClientData     clientData,
+                                          Tcl_Interp    *interp,
+                                          int            objc,
+                                          Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "");
+      return TCL_ERROR;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   CXTargetInfo  targetinfo   = clang_getTranslationUnitTargetInfo(info->translationUnit);
+   int           pointerWidth = clang_TargetInfo_getPointerWidth(targetinfo);
+   Tcl_Obj      *resultObj    = Tcl_NewIntObj(pointerWidth);
+   Tcl_SetObjResult(interp, resultObj);
+
+   clang_TargetInfo_dispose(targetinfo);
+
+   return TCL_OK;
+}
+
 #endif
 
 //----------------------------- translation unit instance's sourceFile command
@@ -5058,6 +5158,10 @@ static int tuInstanceObjCmd(ClientData     clientData,
         tuSourceFileObjCmd },
       { "skippedRanges",
         tuSkippedRangesObjCmd },
+#if CINDEX_VERSION_MINOR >= 38
+      { "targetInfo",
+        tuTargetInfoObjCmd },
+#endif
       { "uniqueID",
         tuUniqueIDObjCmd },
       { NULL },

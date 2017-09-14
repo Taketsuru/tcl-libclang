@@ -38,7 +38,7 @@ namespace import cindex::*
 tcltest::testConstraint hasBistCommand \
     [::expr {"" ne [info comm ::cindex::bist]}];
 for {set major 0} {$major < 1} {incr major} {
-    for {set minor 0} {$minor < 36} {incr minor} {
+    for {set minor 0} {$minor < 39} {incr minor} {
         tcltest::testConstraint cindex$major.$minor \
             [expr {[package vcompare $::cindex::version $major.$minor] >= 0}];
     }
@@ -832,6 +832,28 @@ test translationUnitSkippedRanges-2.0 "cursor / allSkippedRanges" -setup {
 } -body {
     llength [mytu skippedRanges];
 } -result 1 -constraints cindex0.36;
+
+#-------------------------------------- <translation unit instance> targetInfo
+
+test translationUnitTargetInfo-1.0 "translationUnit / targetInfo triple" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata index-1.0.c]
+    index myindex
+    myindex translationUnit mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    expr {"" ne [mytu targetInfo triple]};
+} -result 1 -constraints cindex0.38;
+
+test translationUnitTargetInfo-2.0 "translationUnit / targetInfo pointerWidth" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata index-1.0.c]
+    index myindex
+    myindex translationUnit mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    expr {0 < [mytu targetInfo pointerWidth]};
+} -result 1 -constraints cindex0.38;
 
 #-------------------------------------- <translation unit instance> sourceFile
 
