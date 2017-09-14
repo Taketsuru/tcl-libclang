@@ -4670,6 +4670,7 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
       tu = NULL;
    }
 
+   Tcl_Free((char *)args);
    Tcl_Free((char *)unsavedFiles);
 
    Tcl_Obj *err = NULL;
