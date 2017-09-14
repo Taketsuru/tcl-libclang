@@ -802,6 +802,21 @@ test translationUnitDiagnostics-0.0 "translationUnit / diagnostics" -setup {
     }
 }
 
+#------------------------------------------- <translation unit instance> index
+
+test translationUnitIndex-0.0 "translationUnit / index" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata index-1.0.c]
+    index myindex
+    myindex translationUnit mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    set tuindex [mytu index];
+    if {$tuindex ne "::myindex"} {
+	::error "wrong index: $tuindex != \"::myindex\"";
+    }
+}
+
 #-------------------------------------- <translation unit instance> diagnostic
 
 #------------------------ <translation unit instance> isMultipleIncludeGuarded

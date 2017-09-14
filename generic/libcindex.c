@@ -823,6 +823,7 @@ static Tcl_Obj *newDecodedLocationObj(CXFile   file,
 typedef struct IndexInfo
 {
    Tcl_Interp *interp;
+   Tcl_Command cmd;
    CXIndex     index;
 } IndexInfo;
 
@@ -851,11 +852,12 @@ static int tuHash(CXTranslationUnit tu)
 
 //---------------------------------------------------------------------- index
 
-static IndexInfo *createIndexInfo(Tcl_Interp *interp, CXIndex index)
+static IndexInfo *createIndexInfo(Tcl_Interp *interp, CXIndex index, Tcl_Command cmd)
 {
    IndexInfo *info = (IndexInfo *)Tcl_Alloc(sizeof *info);
    info->interp    = interp;
    info->index     = index;
+   info->cmd       = cmd;
 
    return info;
 }
@@ -4304,6 +4306,32 @@ cleanup:
    return status;
 }
 
+//---------------------------------- translation unit instance's index command
+
+static int tuIndexObjCmd(ClientData     clientData,
+                         Tcl_Interp    *interp,
+                         int            objc,
+                         Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "");
+      return TCL_ERROR;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   Tcl_Obj *tuObj = Tcl_NewObj();
+   Tcl_GetCommandFullName(interp, info->parent->cmd, tuObj);
+   Tcl_SetObjResult(interp, tuObj);
+
+   return TCL_OK;
+}
+
 //--------------- translation unit instance's isMultipleIncludeGuarded command
 
 static int tuIsMultipleIncludeGuardedObjCmd(ClientData     clientData,
@@ -5142,6 +5170,8 @@ static int tuInstanceObjCmd(ClientData     clientData,
 #endif
       { "inclusions",
         tuInclusionsObjCmd },
+      { "index",
+        tuIndexObjCmd },
       { "isMultipleIncludeGuarded",
         tuIsMultipleIncludeGuardedObjCmd },
       { "location",
@@ -6122,14 +6152,21 @@ static int indexObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   IndexInfo *info = createIndexInfo(interp, index);
-
 
    Tcl_Obj *commandNameObj = NULL;
    newQualifiedName(interp, ixNameObj, &commandNameObj);
 
-   Tcl_CreateObjCommand(interp, Tcl_GetString(commandNameObj),
-                        indexNameObjCmd, info, indexDeleteProc);
+   Tcl_Command cmd = Tcl_CreateObjCommand(interp, Tcl_GetString(commandNameObj),
+                                          indexNameObjCmd, NULL, indexDeleteProc);
+
+   Tcl_CmdInfo cmdinfo;
+   IndexInfo  *info = createIndexInfo(interp, index, cmd);
+
+   Tcl_GetCommandInfoFromToken(cmd, &cmdinfo);
+   cmdinfo.objClientData = info;
+   cmdinfo.clientData = info;
+   cmdinfo.deleteData = info;
+   Tcl_SetCommandInfoFromToken(cmd, &cmdinfo);
 
    Tcl_SetObjResult(interp, commandNameObj);
    return TCL_OK;
