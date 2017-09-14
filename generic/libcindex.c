@@ -6397,6 +6397,16 @@ int Cindex_Init(Tcl_Interp *interp)
         cursorToKindToBoolObjCmd,	clang_isAttribute },
       { "bitField",
         cursorToBoolObjCmd,		clang_Cursor_isBitField },
+#if CINDEX_VERSION_MINOR >= 35
+      { "cxxConstructorConverting",
+        cursorToBoolObjCmd,		clang_CXXConstructor_isConvertingConstructor },
+      { "cxxConstructorCopy",
+        cursorToBoolObjCmd,		clang_CXXConstructor_isCopyConstructor },
+      { "cxxConstructorDefault",
+        cursorToBoolObjCmd,		clang_CXXConstructor_isDefaultConstructor },
+      { "cxxConstructorMove",
+        cursorToBoolObjCmd,		clang_CXXConstructor_isMoveConstructor },
+#endif
 #if CINDEX_VERSION_MINOR >= 32
       { "cxxFieldMutable",
         cursorToBoolObjCmd,		clang_CXXField_isMutable },

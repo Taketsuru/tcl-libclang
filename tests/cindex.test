@@ -113,6 +113,12 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
     if {[::tcltest::testConstraint cindex0.25]} {
         cursor is cxxMethodConst $root
     }
+    if {[::tcltest::testConstraint cindex0.35]} {
+        cursor is cxxConstructorConverting $root
+        cursor is cxxConstructorCopy $root
+        cursor is cxxConstructorDefault $root
+        cursor is cxxConstructorMove $root
+    }
     cursor is cxxMethodPureVirtual $root
     cursor is cxxMethodStatic $root
     cursor is cxxMethodVirtual $root
