@@ -6389,6 +6389,10 @@ int Cindex_Init(Tcl_Interp *interp)
    Tcl_Export(interp, cursorNs, "is", 0);
 
    static Command cursorIsCmdTable[] = {
+#if CINDEX_VERSION_MINOR >= 30
+      { "anonymous",
+        cursorToBoolObjCmd,	        clang_Cursor_isAnonymous },
+#endif
       { "attribute",
         cursorToKindToBoolObjCmd,	clang_isAttribute },
       { "bitField",
