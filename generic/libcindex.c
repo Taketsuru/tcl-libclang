@@ -6397,6 +6397,10 @@ int Cindex_Init(Tcl_Interp *interp)
         cursorToKindToBoolObjCmd,	clang_isAttribute },
       { "bitField",
         cursorToBoolObjCmd,		clang_Cursor_isBitField },
+#if CINDEX_VERSION_MINOR >= 32
+      { "cxxFieldMutable",
+        cursorToBoolObjCmd,		clang_CXXField_isMutable },
+#endif
 #if CINDEX_VERSION_MINOR >= 25
       { "cxxMethodConst",
         cursorToBoolObjCmd,		clang_CXXMethod_isConst },

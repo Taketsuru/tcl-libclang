@@ -107,6 +107,9 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
     }
     cursor is attribute $root
     cursor is bitField $root
+    if {[::tcltest::testConstraint cindex0.32]} {
+        cursor is cxxFieldMutable $root
+    }
     if {[::tcltest::testConstraint cindex0.25]} {
         cursor is cxxMethodConst $root
     }
