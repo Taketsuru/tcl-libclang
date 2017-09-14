@@ -30,6 +30,9 @@
 #include <tcl.h>
 #include <tclTomMath.h>
 #include <clang-c/Index.h>
+#if CINDEX_VERSION_MINOR >= 24
+#include <clang-c/CXErrorCode.h>
+#endif
 #if CINDEX_VERSION_MINOR >= 25
 #include <clang-c/Documentation.h>
 #endif
@@ -4639,15 +4642,29 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
    Tcl_DecrRefCount(unsavedFileList);
 
    IndexInfo *parent = (IndexInfo *)clientData;
-   CXTranslationUnit tu;
+   CXTranslationUnit tu = NULL;
+#if CINDEX_VERSION_MINOR >= 23
+   enum CXErrorCode ec;
+#endif
    switch (parse) {
    case parse_source:
+#if CINDEX_VERSION_MINOR >= 23
+      ec = clang_parseTranslationUnit2(parent->index, sourceFilename,
+                                       (const char *const *)args, nargs,
+                                       unsavedFiles, numUnsavedFiles, flags,
+                                       &tu);
+#else
       tu = clang_parseTranslationUnit(parent->index, sourceFilename,
                                       (const char *const *)args, nargs,
                                       unsavedFiles, numUnsavedFiles, flags);
+#endif
       break;
    case parse_preparsed:
+#if CINDEX_VERSION_MINOR >= 23
+      ec = clang_createTranslationUnit2(parent->index, sourceFilename, &tu);
+#else
       tu = clang_createTranslationUnit(parent->index, sourceFilename);
+#endif
       break;
    default:
       tu = NULL;
@@ -4655,10 +4672,32 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
 
    Tcl_Free((char *)unsavedFiles);
 
+   Tcl_Obj *err = NULL;
+#if CINDEX_VERSION_MINOR >= 23
+   switch (ec) {
+   case CXError_Failure:
+     err = Tcl_NewStringObj("failed to create translation unit.", -1);
+     break;
+   case CXError_Crashed:
+     err = Tcl_NewStringObj("failed to create translation unit: libclang crashed.", -1);
+     break;
+   case CXError_InvalidArguments:
+     err = Tcl_NewStringObj("failed to create translation unit: invalid arguments.", -1);
+     break;
+   case CXError_ASTReadError:
+     err = Tcl_NewStringObj("failed to create translation unit: AST deserialization failed.", -1);
+     break;
+   case CXError_Success:
+     /* Just don't set err. */
+     break;
+   }
+#else
    if (tu == NULL) {
-      Tcl_SetObjResult(interp,
-                       Tcl_NewStringObj("failed to create translation unit.",
-                                        -1));
+      err = Tcl_NewStringObj("failed to create translation unit.", -1);
+   }
+#endif
+   if (err != NULL) {
+      Tcl_SetObjResult(interp, err);
       return TCL_ERROR;
    }
 
