@@ -1613,6 +1613,10 @@ getCursorFromObj(Tcl_Interp *interp, Tcl_Obj *obj, CXCursor *cursor)
       return status;
    }
 
+   if (n != nelms) {
+      goto invalid_cursor;
+   }
+
    Tcl_Obj* kindObj = NULL;
    if (Tcl_DictObjGet(NULL, cursorKindValues, elms[kind_ix], &kindObj)
        != TCL_OK) {
