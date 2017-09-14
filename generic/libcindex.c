@@ -3413,6 +3413,39 @@ static int cursorToKindToBoolObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+#if CINDEX_VERSION_MINOR >= 30
+//----------------------------------------- cursor -> layout long long command
+
+static int cursorToLayoutLongLongObjCmd(ClientData     clientData,
+                                        Tcl_Interp    *interp,
+                                        int            objc,
+                                        Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      cursor_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   CXCursor cxcursor;
+   int status = getCursorFromObj(interp, objv[cursor_ix], &cxcursor);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   long long  result    = ((long long (*)(CXCursor))clientData)(cxcursor);
+   Tcl_Obj   *resultObj = newLayoutLongLongObj(result);
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
+#endif
 //---------------------------------------------- cursor -> cursor list command
 
 typedef struct CursorToCursorListInfo {
@@ -6319,6 +6352,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "objCTypeEncoding",
         cursorToStringObjCmd,
         clang_getDeclObjCTypeEncoding },
+#if CINDEX_VERSION_MINOR >= 30
+      { "offsetOfField",
+        cursorToLayoutLongLongObjCmd,
+        clang_Cursor_getOffsetOfField },
+#endif
       { "overloadedDecl",
         cursorUnsignedToCursorObjCmd,
         clang_getOverloadedDecl },

@@ -191,6 +191,9 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
                 recurse
             } FieldDecl {
                 cursor fieldDeclBitWidth $child
+                if {[::tcltest::testConstraint cindex0.30]} {
+                    cursor offsetOfField $child
+                }
             }
         }
     }
