@@ -6435,6 +6435,10 @@ int Cindex_Init(Tcl_Interp *interp)
         cursorToKindToBoolObjCmd,	clang_isUnexposed },
       { "expression",
         cursorToKindToBoolObjCmd,	clang_isExpression },
+#if CINDEX_VERSION_MINOR >= 33
+      { "functionInlined",
+        cursorToBoolObjCmd,		clang_Cursor_isFunctionInlined },
+#endif
       { "invalid",
         cursorToKindToBoolObjCmd,	clang_isInvalid },
       { "null",

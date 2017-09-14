@@ -127,6 +127,9 @@ test cindex_cursor-0.0 "cursor / all subcommands" \
     cursor is definition $root
     cursor is dynamicCall $root
     cursor is unexposed $root
+    if {[::tcltest::testConstraint cindex0.33]} {
+        cursor is functionInlined $root
+    }
     cursor is expression $root
     cursor is invalid $root
     if {[::tcltest::testConstraint cindex0.33]} {
