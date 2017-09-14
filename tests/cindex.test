@@ -357,6 +357,20 @@ test translationUnitNameCursor-1.0 \
     return [lindex $root 0]
 } -result TranslationUnit
 
+#------------------------------------ <translation unit instance> findIncludes
+
+test translationUnitFindIncludes-0.0 "cursor / findIncludes" \
+    -constraints cindex0.13 \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+    -body {
+        set includes {};
+        mytu findIncludes $fn {ifn isr} {
+            lappend includes [cursor displayName $ifn];
+        }
+        expr {"clang-c/Index.h" in $includes}
+    } -result 1
+
 #-------------------------------------- <translation unit instance> inclusions
 
 test translationUnitInclusions-0.0 "cursor / inclusions" \

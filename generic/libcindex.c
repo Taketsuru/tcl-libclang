@@ -4404,6 +4404,134 @@ static int tuUniqueIDObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+#if CINDEX_VERSION_MINOR >= 13
+//----------------------------------------------- cursorAndRangeVisitor helper
+
+enum CXVisitorResult foreachCursorAndRangeVisitor(void *context,
+                                                  CXCursor cursor,
+                                                  CXSourceRange range) {
+   int status = TCL_OK;
+   Tcl_Obj *cursorObj = NULL;
+   Tcl_Obj *rangeObj = NULL;
+
+   VisitInfo *visitInfo = (VisitInfo *)context;
+
+   cursorObj = newCursorObj(cursor);
+   Tcl_IncrRefCount(cursorObj);
+   if (Tcl_ObjSetVar2(visitInfo->interp, visitInfo->variableNames[0],
+                      NULL, cursorObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   rangeObj = newRangeObj(range);
+   Tcl_IncrRefCount(rangeObj);
+   if (Tcl_ObjSetVar2(visitInfo->interp, visitInfo->variableNames[1],
+                      NULL, rangeObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
+
+cleanup:
+   if (cursorObj) {
+      Tcl_DecrRefCount(cursorObj);
+   }
+   if (rangeObj) {
+      Tcl_DecrRefCount(rangeObj);
+   }
+   switch (status) {
+   case TCL_OK:
+   case TCL_CONTINUE:
+      return CXVisit_Continue;
+   case TCL_BREAK:
+      return CXVisit_Break;
+   default:
+      visitInfo->returnCode = status;
+      return CXVisit_Break;
+   }
+}
+
+//--------------------------- translation unit instance's findIncludes command
+
+static int tuFindIncludesObjCmd(ClientData     clientData,
+                                Tcl_Interp    *interp,
+                                int            objc,
+                                Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      filename_ix,
+      varNames_ix,
+      script_ix,
+      nargs
+   };
+
+   int status = TCL_OK;
+   Tcl_Obj *varNamesObj = NULL;
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "filename variableNames script");
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   int       numVars;
+   Tcl_Obj **varNames;
+   varNamesObj = Tcl_DuplicateObj(objv[varNames_ix]);
+   Tcl_IncrRefCount(varNamesObj);
+   status = Tcl_ListObjGetElements(interp, varNamesObj, &numVars, &varNames);
+   if (status != TCL_OK) {
+      goto cleanup;
+   } else if (numVars != 2) {
+      Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid loop variables: must be cursor range", -1));
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   CXFile file;
+   status = getFileFromObj(interp, info->translationUnit,
+                               objv[filename_ix], &file);
+   if (status != TCL_OK) {
+      goto cleanup;
+   }
+
+   VisitInfo visitInfo = {
+      .interp = interp,
+      .variableNames = varNames,
+      .numVariables = numVars,
+      .scriptObj = objv[script_ix],
+      .returnCode = TCL_OK
+   };
+   CXCursorAndRangeVisitor visitor = {
+      .context = (void *)&visitInfo,
+      .visit = foreachCursorAndRangeVisitor,
+   };
+   CXResult result = clang_findIncludesInFile(info->translationUnit, file,
+                                              visitor);
+   switch (result) {
+   case CXResult_Success:
+   case CXResult_VisitBreak:
+      status = visitInfo.returnCode;
+      break;
+   case CXResult_Invalid:
+      Tcl_SetObjResult(interp, Tcl_NewStringObj("error while finding includes", -1));
+      status = TCL_ERROR;
+      break;
+   }
+
+cleanup:
+   if (varNamesObj) {
+      Tcl_DecrRefCount(varNamesObj);
+   }
+
+   return status;
+}
+#endif
+
 //------------------------------------------ translation unit instance command
 
 static int tuInstanceObjCmd(ClientData     clientData,
@@ -4427,6 +4555,10 @@ static int tuInstanceObjCmd(ClientData     clientData,
         tuCursorObjCmd },
       { "diagnostic",
         tuDiagnosticObjCmd },
+#if CINDEX_VERSION_MINOR >= 13
+      { "findIncludes",
+        tuFindIncludesObjCmd },
+#endif
       { "inclusions",
         tuInclusionsObjCmd },
       { "isMultipleIncludeGuarded",
