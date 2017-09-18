@@ -1,0 +1,891 @@
+# ============================================================================
+#
+# Copyright (c) 2016-2017 Patzschke + Rasp Software GmbH, Wiesbaden
+#                         <amcalvo@prs.de>.
+# Copyright (c) 2014 Taketsuru <taketsuru11@gmail.com>.
+#
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice,
+# this list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+# this list of conditions and the following disclaimer in the documentation
+# and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND ANY
+# EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE FOR ANY
+# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+# THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# ============================================================================
+
+package require tcltest
+namespace import tcltest::*
+
+package require cindex
+namespace import cindex::*
+
+tcltest::testConstraint hasBistCommand \
+    [::expr {"" ne [info comm ::cindex::bist]}];
+for {set major 0} {$major < 1} {incr major} {
+    for {set minor 0} {$minor < 39} {incr minor} {
+        tcltest::testConstraint cindex$major.$minor \
+            [expr {[package vcompare $::cindex::version $major.$minor] >= 0}];
+    }
+}
+
+#------------------------------------------------------------------------ bist
+
+test bist-1.0 "bist" -constraints hasBistCommand -body {
+    bist
+}
+
+#----------------------------------------------------------------------- setup
+
+set setupMytu {
+    set fn [file normalize [file join [file dirname [info script]] .. generic libcindex.c]];
+    index myindex
+    myindex translationUnit \
+        -detailedPreprocessingRecord -- mytu $fn -I$::env(CLANG_BUILTIN_HEADER_INCLUDE_DIR) {*}$::env(COMPILE_FLAGS)
+    set numDiag [mytu diagnostic num];
+    if {$numDiag > 0} {
+	::error [join [mytu diagnostics] \n];
+    }
+}
+
+set cleanupMytu {
+    rename myindex {}
+}
+
+proc setupCFile {fname args} {
+    set fn [file normalize [file join [tcltest::configure -testdir] testdata $fname]]
+    index myindex
+    myindex translationUnit -detailedPreprocessingRecord -- mytu $fn
+    set numDiag [mytu diagnostic num];
+    if {$numDiag > 0} {
+	::error [join [mytu diagnostics] "\n"]
+    }
+
+}
+
+proc cleanupCFile {fname} {
+    rename myindex ""
+}
+
+#---------------------------------------------------------------------- cursor
+
+test cindex_cursor-0.0 "cursor / all subcommands" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    cursor foreachChild [mytu cursor] cx {
+        cursor argument $cx 0
+        cursor arguments $cx
+        cursor availability $cx
+        cursor briefCommentText $cx
+        cursor canonicalCursor $cx
+        cursor commentRange $cx
+        cursor cxxAccessSpecifier $cx
+        if {[::tcltest::testConstraint cindex0.32]} {
+            cursor cxxManglings $cx
+        }
+        cursor definition $cx
+        cursor displayName $cx
+        cursor equal $cx $cx
+        cursor extent $cx
+        if {[::tcltest::testConstraint cindex0.33]} {
+            cursor hasAttrs $cx
+        }
+        cursor hash $cx
+        cursor IBOutletCollectionType $cx
+        if {[::tcltest::testConstraint cindex0.30]} {
+            cursor is anonymous $cx
+        }
+        cursor is attribute $cx
+        cursor is bitField $cx
+        if {[::tcltest::testConstraint cindex0.32]} {
+            cursor is cxxFieldMutable $cx
+        }
+        if {[::tcltest::testConstraint cindex0.25]} {
+            cursor is cxxMethodConst $cx
+        }
+        if {[::tcltest::testConstraint cindex0.35]} {
+            cursor is cxxConstructorConverting $cx
+            cursor is cxxConstructorCopy $cx
+            cursor is cxxConstructorDefault $cx
+            cursor is cxxConstructorMove $cx
+            cursor is cxxMethodDefaulted $cx
+        }
+        cursor is cxxMethodPureVirtual $cx
+        cursor is cxxMethodStatic $cx
+        cursor is cxxMethodVirtual $cx
+        cursor is declaration $cx
+        cursor is definition $cx
+        cursor is dynamicCall $cx
+        if {[::tcltest::testConstraint cindex0.33]} {
+            cursor is functionInlined $cx
+        }
+        cursor is expression $cx
+        cursor is invalid $cx
+        if {[::tcltest::testConstraint cindex0.33]} {
+            cursor is macroFunctionLike $cx
+            cursor is macroBuiltin $cx
+        }
+        cursor is null $cx
+        cursor is objCOptional $cx
+        cursor is preprocessing $cx
+        cursor is reference $cx
+        cursor is statement $cx
+        cursor is translationUnit $cx
+        cursor is unexposed $cx
+        cursor is variadic $cx
+        cursor is virtualBase $cx
+        cursor includedFile $cx
+        cursor language $cx
+        cursor lexicalParent $cx
+        cursor linkage $cx
+        cursor location $cx
+        cursor null
+        cursor numArguments $cx
+        cursor numOverloadedDecls $cx;
+        cursor objCDeclQualifiers $cx
+        cursor objCPropertyAttributes $cx
+        cursor objCSelectorIndex $cx
+        cursor objCTypeEncoding $cx
+        cursor overloadedDecl $cx 0
+        cursor overloadedDecls $cx
+        cursor overriddenCursors $cx
+        cursor platformAvailability $cx
+        cursor rawCommentText $cx
+        cursor receiverType $cx
+        cursor referenced $cx
+        cursor referenceNameRange $cx 0
+        cursor resultType $cx
+        cursor semanticParent $cx
+        cursor specializedTemplate $cx
+        cursor spelling $cx
+        cursor spellingNameRange $cx 0
+        if {[::tcltest::testConstraint cindex0.29]} {
+            cursor storageClass $cx
+        }
+        cursor translationUnit $cx
+        cursor templateCursorKind $cx
+        cursor type $cx
+        cursor typedefDeclUnderlyingType $cx
+        cursor USR $cx
+        if {[::tcltest::testConstraint cindex0.32]} {
+            cursor visibility $cx
+        }
+        switch -- [lindex $cx 0] {
+            EnumDecl {
+                cursor enumDeclIntegerType $cx
+            }
+            EnumConstantDecl {
+                cursor enumConstantDeclValue $cx
+            }
+            FieldDecl {
+                cursor fieldDeclBitWidth $cx
+                if {[::tcltest::testConstraint cindex0.30]} {
+                    cursor offsetOfField $cx
+                }
+            }
+            VarDecl {
+                if {[::tcltest::testConstraint cindex0.33]} {
+                    cursor evaluate $cx
+                }
+            }
+        }
+        recurse
+    }
+    return
+}
+
+test cindex_cursor-2.0 "cursor / numArguments/argument/arguments" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    cursor foreachChild [mytu cursor] cursor {
+        if {[lindex $cursor 0] eq "FunctionDecl"} {
+            foreach subcmd {argument overloadedDecl} {
+                set numsubcmd "num[string toupper [string index $subcmd 0]][string range $subcmd 1 end]s";
+                set getsubcmd $subcmd
+                set listsubcmd "${subcmd}s";
+                set N [cursor $numsubcmd $cursor]
+                set elems [cursor $listsubcmd $cursor]
+                for {set i 0} {$i < $N} {incr i} {
+                    if {[cursor $getsubcmd $cursor $i] ne [lindex $elems $i]} {
+                        ::error "different arguments"
+                    }
+                }
+            }
+            set type [cursor type $cursor];
+            set numArgTypes [type numArgTypes $type];
+            set argTypes [type argTypes $type];
+            for {set i 0} {$i < $numArgTypes} {incr i} {
+                if {[type argType $type $i] ne [lindex $argTypes $i]} {
+                    ::error "different argument types";
+                }
+            }
+        }
+    }
+    return
+}
+
+test cindex_cursor-3.0 "cursor / mangling" \
+    -constraints cindex0.28 \
+    -setup { setupCFile cursor-3.0.cxx } \
+    -cleanup { cleanupCFile cursor-3.0.cxx } \
+    -body {
+        cursor foreachChild [mytu cursor] c {
+            if {[lindex $c 0] eq "FunctionDecl"} {
+                set mangling [cursor mangling $c];
+                set spelling [cursor spelling $c];
+                if {$mangling eq $spelling} {
+                    ::error "unexpectedly unmangled";
+                }
+            }
+        }
+    }
+
+#---------------------------------------------------------------- foreachChild
+
+test foreachChild-1.0 "foreachChild / loop" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set rootcursor [mytu cursor]
+    set cursors {}
+    foreachChild c $rootcursor {
+        lappend cursors $c;
+    }
+    set i 0;
+    foreachChild c $rootcursor {
+        set othercursor [lindex $cursors $i]
+        incr i;
+        set eq [cursor equal $c $othercursor]
+        if {!$eq} {
+            return "$c != $othercursor"
+        }
+    }
+    return
+}
+
+test foreachChild-2.0 "foreachChild / recurse" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set rootcursor [mytu cursor]
+    set cursors {}
+    foreachChild c $rootcursor {
+        lappend cursors $c;
+        recurse
+    }
+    set i 0;
+    foreachChild c $rootcursor {
+        set othercursor [lindex $cursors $i]
+        incr i;
+        set eq [cursor equal $c $othercursor]
+        if {!$eq} {
+            return "$c != $othercursor"
+        }
+        recurse
+    }
+    return
+}
+
+test foreachChild-2.1 "foreachChild / recurse" \
+    -setup { setupCFile foreachChild-2.1.c } \
+    -cleanup { cleanupCFile foreachChild-2.1.c } \
+-body {
+    set cursorparents [dict create]
+    set rootcursor [mytu cursor]
+    dict set cursorparents $rootcursor ""
+    foreachChild {c anc} $rootcursor {
+        if {[location is inMainFile [cursor location $c]]} {
+            dict set cursorparents $c [lindex $anc end];
+            foreach p [lrange $anc 0 end-1] a [lrange $anc 1 end] {
+                set kp [dict get $cursorparents $a]
+                if {![cursor equal $kp $p]} {
+                    return "parents don't match: $kp $p";
+                }
+            }
+            recurse
+        }
+    }
+    return
+}
+
+test foreachChild-3.0 "cursor / foreachChild / continue" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set rootcursor [mytu cursor]
+    set cursors {}
+    foreachChild c $rootcursor {
+        lappend cursors $c;
+    }
+    set level 0;
+    set i 0;
+    foreachChild c $rootcursor {
+        set othercursor [lindex $cursors $i]
+        incr i;
+        set eq [cursor equal $c $othercursor]
+        if {!$eq} {
+            return "$c != $othercursor"
+        }
+        if {$level > 0} {
+            continue;
+        } else {
+            incr level
+            recurse
+        }
+    }
+    return
+}
+
+test foreachChild-4.0 "cursor / foreachChild / break" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set rootcursor [mytu cursor]
+    set cursors {}
+    foreachChild c $rootcursor {
+        lappend cursors $c;
+    }
+    set level 0;
+    set i 0;
+    foreachChild {c ac} $rootcursor {
+        if {[llength $ac] > 1} {
+            # Stop at first recursion.
+            break;
+        }
+        set othercursor [lindex $cursors $i]
+        incr i;
+        set eq [cursor equal $c $othercursor]
+        if {!$eq} {
+            return "$c != $othercursor"
+        }
+        recurse
+    }
+    return
+}
+
+test foreachChild-5.0 "cursor / foreachChild / recursebreak" \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+-body {
+    set rootcursor [mytu cursor]
+    set cursors {}
+    foreachChild c $rootcursor {
+        lappend cursors $c;
+    }
+    set level 0;
+    set i 0;
+    foreachChild {c ac} $rootcursor {
+        if {[llength $ac] > 1} {
+            # break to parent.
+            recursebreak;
+        }
+        set othercursor [lindex $cursors $i]
+        incr i;
+        set eq [cursor equal $c $othercursor]
+        if {!$eq} {
+            return "$c != $othercursor"
+        }
+        recurse
+    }
+    return
+}
+
+
+#----------------------------------------------------------------------- index
+
+test index-0.0 "index / construction & destruction" -body {
+    index myindex
+    rename myindex {}
+    return
+}
+
+test index-1.0 "index / -displayDiagnostics" -body {
+    catch {exec [info nameofexecutable] [file join [tcltest::configure -testdir] testdata index-1.0.tcl]} result
+    return $result
+} -result "*index-1.0.c:*:*: error: expected ';' after top level declarator" -match glob
+
+test index-1.1 "index / -excludeDeclFromPCH" -setup {
+    index myindex
+    set hfn [file join [tcltest::configure -testdir] testdata index-1.1.h]
+    set cfn [file join [tcltest::configure -testdir] testdata index-1.1.c]
+    set pchfn [file join [tcltest::configure -tmpdir] index-1.1.h.pch]
+    myindex translationUnit -incomplete mytu $hfn
+    mytu save $pchfn
+} -body {
+    # without -excludeDeclFromPCH finds the function declaration in the
+    # pre-compiled header file.
+    index myindex
+    myindex translationUnit mytu -include-pch $pchfn $cfn
+    set res "";
+    foreachChild cursor [mytu cursor] {
+        if {[lindex $cursor 0] eq "VarDecl"} {
+            set res "The first element of index-1.1.c is a VarDecl."
+        }
+        break;
+    }
+    if {"" ne $res } { return $res; }
+    # with -excludeDeclFromPCH the VarDecl in $cfn is found first.
+    index -excludeDeclFromPCH myindex
+    myindex translationUnit -- mytu -include-pch $pchfn $cfn
+    foreachChild cursor [mytu cursor] {
+        if {[lindex $cursor 0] ne "VarDecl"} {
+            set res "The first element of index-1.1.c isn't a VarDecl, but [lindex $cursor 0]."
+        }
+        break;
+    }
+    if {"" ne $res } { return $res; }
+} -cleanup {
+    file delete $pchfn
+    rename myindex {}
+}
+
+#-------------------------------------------------------------------- location
+
+test cindex_location-0.0 "location / all subcommands" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    set mylocation [cursor location [mytu cursor]]
+    location equal $mylocation $mylocation
+    location expansionLocation $mylocation
+    location fileLocation $mylocation
+    location null
+    location presumedLocation $mylocation
+    location spellingLocation $mylocation
+    location is null $mylocation
+    location is inSystemHeader $mylocation
+    location is inMainFile $mylocation
+    return
+}
+
+# ---------------------------------------------------------------------- range
+
+test cindex_range-0.0 "range / all subcommands" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    set myrange [cursor extent [mytu cursor]]
+    set mylocation [cursor location [mytu cursor]]
+    range create $mylocation $mylocation
+    range end $myrange
+    range equal $myrange $myrange
+    range is null $myrange
+    range null
+    range start $myrange
+    return
+}
+
+#--------------------------------------------------------------------- recurse
+
+# ----------------------------------------------------------------------- type
+
+test cindex_type-0.0 "type / all subcommands" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    cursor foreachChild [mytu cursor] cx {
+        set tx [cursor type $cx]
+        type alignof $tx
+        type argType $tx 0
+        type argTypes $tx
+        type arrayElementType $tx
+        type arraySize $tx
+        type canonicalType $tx
+        type classType $tx
+        type cxxRefQualifier $tx
+        type declaration $tx
+        type elementType $tx
+        type equal $tx $tx
+        type functionTypeCallingConvention $tx
+        type is constQualified $tx
+        type is functionTypeVariadic $tx
+        type is PODType $tx
+        type is restrictQualified $tx
+        if {[::tcltest::testConstraint cindex0.38]} {
+            type is transparentTagTypedef $tx
+        }
+        type is volatileQualified $tx
+        if {[::tcltest::testConstraint cindex0.35]} {
+            type namedType $tx
+        }
+        type numArgTypes $tx
+        type numElements $tx
+        type offsetof $tx test
+        if {[::tcltest::testConstraint cindex0.33]} {
+            type objCEncoding $tx
+        }
+        type pointeeType $tx
+        type resultType $tx
+        type sizeof $tx
+        type spelling $tx
+        recurse
+    }
+    return
+}
+
+#------------------------------------------------------------- type fieldVisit
+
+test cindex_type-1.0 "type / fieldVisit" \
+-constraints cindex0.30 \
+-setup { setupCFile type-1.0.c } \
+-cleanup { cleanupCFile type-1.0.c } \
+-body {
+    set res {}
+    foreachChild cx [mytu cursor] {
+        if {[lindex $cx 0] eq "StructDecl"} {
+            set ty [cursor type $cx]
+            lappend res [lindex $ty 0]
+            type foreachField $ty field {
+                lappend res [lindex $field 0]
+            }
+            break;
+        }
+    }
+    return $res
+} -result {Record FieldDecl FieldDecl}
+
+#---------------------------------------------------- <index instance> options
+
+test indexName_options-1.0 "<index instance> options / default" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options
+} -result -none
+
+test indexName_options-2.0 \
+    "<index instance> options / -backgroundIndexing" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options -backgroundIndexing
+    myindex options
+} -result -backgroundIndexing
+
+test indexName_options-2.1 \
+    "<index instance> options / -backgroundEditing" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options -backgroundEditing
+    myindex options
+} -result -backgroundEditing
+
+test indexName_options-3.0 "<index instance> options / -background" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options -background
+    myindex options
+} -result -background
+
+test indexName_options-4.0 "<index instance> options / multiple" -setup {
+    index myindex
+} -cleanup {
+    rename myindex {}
+} -body {
+    myindex options -backgroundIndexing -backgroundEditing
+    myindex options
+} -result -background
+
+#-------------------------------------------- <index instance> translationUnit
+
+test indexName_translationUnit-1.0 "indexName translationUnit / all options" \
+-setup {
+    index -displayDiagnostics myindex
+} -cleanup {
+    rename myindex {}; # this destruct both index & translation unit instances
+} -body {
+    set basedir [file join [tcltest::configure -testdir] testdata]
+    set flags [list \
+                   -cacheCompletionResults \
+                   -detailedPreprocessingRecord \
+                   -forSerialization \
+                   -includeBriefCommentsInCodeCompletion \
+                   -incomplete \
+                   -precompiledPreamble \
+                   -skipFunctionBodies];
+    if {[::tcltest::testConstraint cindex0.33]} {
+        lappend flags -createPreambleOnFirstParse;
+    }
+    if {[::tcltest::testConstraint cindex0.34]} {
+        lappend flags -keepGoing;
+    }
+    myindex translationUnit \
+        {*}$flags \
+        -sourceFile [file join $basedir indexName_translationUnit-1.0.c] \
+        -unsavedFile [file join $basedir indexName_translationUnit-1.0.h] "typedef int x;\n"\
+        -- mytu
+    return
+}
+
+#------------------------------------------------- <translation unit instance>
+
+test translationUnit-1.0 \
+    "<translation unit instance> delete" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    rename mytu "";
+} -result "";
+
+test translationUnit-2.0 \
+    "<translation unit instance> rename" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    rename mytu othertu;
+} -result "";
+
+
+#------------------------------------------ <translation unit instance> cursor
+
+test translationUnitNameCursor-1.0 \
+    "<translation unit instance> cursor" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    set root [mytu cursor]
+    return [lindex $root 0]
+} -result TranslationUnit
+
+test translationUnitNameCursor-2.0 \
+    "<translation unit instance> cursor -location" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    set root [mytu cursor]
+    cursor foreachChild $root cx1 {}; # last child
+    set loc [cursor location $cx1];
+    set cx2 [mytu cursor -location $loc]
+    return [cursor equal $cx1 $cx2];
+} -result 1
+
+test translationUnitNameCursor-3.0 \
+    "<translation unit instance> cursor -file -line -column" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    set root [mytu cursor]
+    cursor foreachChild $root cx1 {}; # last child
+    set loc [cursor location $cx1];
+    lassign [location fileLocation $loc] fn ln col;
+    set cx2 [mytu cursor -file $fn -line $ln -column $col]
+    return [cursor equal $cx1 $cx2];
+} -result 1
+
+test translationUnitNameCursor-3.0 \
+    "<translation unit instance> cursor -offset" \
+-setup $setupMytu \
+-cleanup $cleanupMytu \
+-body {
+    set root [mytu cursor]
+    cursor foreachChild $root cx1 {}; # last child
+    set loc [cursor location $cx1];
+    lassign [location fileLocation $loc] fn _ _ offset;
+    set cx2 [mytu cursor -file $fn -offset $offset]
+    return [cursor equal $cx1 $cx2];
+} -result 1
+
+#------------------------------------ <translation unit instance> findIncludes
+
+test translationUnitFindIncludes-0.0 "cursor / findIncludes" \
+    -constraints cindex0.13 \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+    -body {
+        set includes {};
+        mytu findIncludes $fn {ifn isr} {
+            lappend includes [cursor displayName $ifn];
+        }
+        expr {"clang-c/Index.h" in $includes}
+    } -result 1
+
+test translationUnitFindIncludes-0.0 "cursor / findIncludes / break" \
+    -constraints cindex0.13 \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+    -body {
+        set includes {};
+        mytu findIncludes $fn {ifn isr} {
+            lappend includes $ifn;
+            break;
+        }
+        llength $includes
+    } -result 1
+
+
+#-------------------------------------- <translation unit instance> inclusions
+
+test translationUnitInclusions-0.0 "cursor / inclusions" \
+    -constraints cindex0.13 \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+    -body {
+        # Check that the source is the bottom of the stack for all inclusions.
+        # Make sure Index.h is included.
+        set topfn ""
+        set includes {};
+        mytu inclusions {fn fs} {
+            lappend includes $fn;
+            if {0 == [llength $fs]} {
+                set topfn [file normalize $fn];
+            } else {
+                lassign [location fileLocation [lindex $fs 0]] lfn;
+                if {$topfn ne $lfn} {
+                    error "invalid include stack bottom: \"$lfn\" != \"$topfn\""
+                }
+            }
+        }
+        set found 0
+        foreach inc $includes {
+            if {[string match "*/clang-c/Index.h" $inc]} {
+                set found 1;
+                break;
+            }
+        }
+        return $found
+    } -result 1
+
+test translationUnitInclusions-0.0 "cursor / break" \
+    -constraints cindex0.13 \
+    -setup $setupMytu \
+    -cleanup $cleanupMytu \
+    -body {
+        # Check that the source is the bottom of the stack for all inclusions.
+        # Make sure Index.h is included.
+        set topfn ""
+        set includes {};
+        mytu inclusions {fn fs} {
+            lappend includes $fn;
+            break;
+        }
+        llength $includes
+    } -result 1
+
+#------------------------------------- <translation unit instance> diagnostics
+
+test translationUnitDiagnostics-0.0 "translationUnit / diagnostics" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata index-1.0.c]
+    index myindex
+    myindex translationUnit mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    set numDiags [mytu diagnostic num];
+    set diagnostics [mytu diagnostics];
+    for {set i 0} {$i < $numDiags} {incr i} {
+        if {[mytu diagnostic decode $i] ne [lindex $diagnostics $i]} {
+            ::error "different diagnostics";
+        }
+    }
+}
+
+#------------------------------------------- <translation unit instance> index
+
+test translationUnitIndex-0.0 "translationUnit / index" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata index-1.0.c]
+    index myindex
+    myindex translationUnit mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    set tuindex [mytu index];
+    if {$tuindex ne "::myindex"} {
+	::error "wrong index: $tuindex != \"::myindex\"";
+    }
+}
+
+#-------------------------------------- <translation unit instance> diagnostic
+
+#------------------------ <translation unit instance> isMultipleIncludeGuarded
+
+#---------------------------------------- <translation unit instance> location
+
+#-------------------------------- <translation unit instance> modificationTime
+
+#----------------------------------------- <translation unit instance> reparse
+
+#----------------------------------- <translation unit instance> resourceUsage
+
+#-------------------------------------------- <translation unit instance> save
+
+#----------------------------------- <translation unit instance> skippedRanges
+
+test translationUnitSkippedRanges-1.0 "cursor / skippedRanges" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata translationUnitSkippedRanges-1.0.c]
+    index myindex
+    myindex translationUnit -detailedPreprocessingRecord -- mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    llength [mytu skippedRanges [mytu sourceFile]];
+} -result 1 -constraints cindex0.22;
+
+test translationUnitSkippedRanges-2.0 "cursor / allSkippedRanges" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata translationUnitSkippedRanges-1.0.c]
+    index myindex
+    myindex translationUnit -detailedPreprocessingRecord -- mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    llength [mytu skippedRanges];
+} -result 1 -constraints cindex0.36;
+
+#-------------------------------------- <translation unit instance> targetInfo
+
+test translationUnitTargetInfo-1.0 "translationUnit / targetInfo triple" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata index-1.0.c]
+    index myindex
+    myindex translationUnit mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    expr {"" ne [mytu targetInfo triple]};
+} -result 1 -constraints cindex0.38;
+
+test translationUnitTargetInfo-2.0 "translationUnit / targetInfo pointerWidth" -setup {
+    set fn [file join [tcltest::configure -testdir] testdata index-1.0.c]
+    index myindex
+    myindex translationUnit mytu $fn
+} -cleanup {
+    rename myindex ""
+} -body {
+    expr {0 < [mytu targetInfo pointerWidth]};
+} -result 1 -constraints cindex0.38;
+
+#-------------------------------------- <translation unit instance> sourceFile
+
+#---------------------------------------- <translation unit instance> uniqueID
+
+#=============================================================================
+
+cleanupTests
+
+# Local Variables:
+# tab-width: 8
+# fill-column: 78
+# mode: tcl
+# indent-tabs-mode: nil
+# End:

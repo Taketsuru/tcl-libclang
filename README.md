@@ -6,44 +6,24 @@ Tcl language binding of libclang (work in progress)
 Build Procedure
 ===============
 
-To build this library, the followings programs are necessary.  Install
-them first.
+`tcl-libclang` is packaged as a TEA extension.  For example:
 
-- aspell
-- fop
-- libclang
-- tclsh8.6
-- xmllint
-- xsltproc
-- DocBook 5.0
-- DocBook 5.0 style sheet
+~~~{.sh}
+./configure --prefix=/usr/local --exec-prefix=/usr/local
+make
+make install
+~~~
 
-Makefile in the same directory as README.md has the following variable
-definitions just after the header comment block.  Change them if it's
-necessary.
+If multiple LLVM versions are installed, the `--llvm-config` configure option should be set to the path of the `llvm-config` for the version to be linked.
 
-TCLSH		= /usr/local/bin/tclsh8.6
-FOP		= /usr/local/bin/fop
-XSLTPROC	= /usr/local/bin/xsltproc
-XMLLINT		= /usr/local/bin/xmllint
-CFLAGS		= -DBIST -Wall -g -fPIC \
-		-I /usr/local/include -I /usr/local/include/tcl8.6/
-DOCBOOK_RNG	= ../docbook-5.0/rng/docbook.rng
-DOCBOOK_XSL	= ../docbook-xsl-ns-1.78.1
+Please, tweak the configure options `--with-dita-ot`, `--with-xml-impl` and `--with-classpath` to your environment in order to build the documentation.
 
-Cd to the directory of README.md.  Run "make".  The following files
-will be built in the current directory.
+Run the following Tcl commands to load the extension:
 
-- libcindex.so
-- refman.html
-
-Copy libcindex.so to a directory in Tcl library path ($TCLLIBPATH) and
-append the contents of pkgIndex.tcl in the current directory to the
-directory in Tcl library path.
-
-Run the following Tcl command to load the extension.
-
-$ package require cindex 
+~~~{.tcl}
+::lappend ::auto_path [file join / usr local lib]; # the exec_path
+package require cindex 
+~~~
 
 Test Procedure
 ==============

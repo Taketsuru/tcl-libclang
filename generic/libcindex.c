@@ -1,5 +1,7 @@
 //============================================================================
 
+// Copyright (c) 2016-2017 Patzschke + Rasp Software GmbH, Wiesbaden
+//                         <amcalvo@prs.de>.
 // Copyright (c) 2014 Taketsuru <taketsuru11@gmail.com>.
 // All rights reserved.
 
@@ -30,6 +32,12 @@
 #include <tcl.h>
 #include <tclTomMath.h>
 #include <clang-c/Index.h>
+#if CINDEX_VERSION_MINOR >= 24
+#include <clang-c/CXErrorCode.h>
+#endif
+#if CINDEX_VERSION_MINOR >= 25
+#include <clang-c/Documentation.h>
+#endif
 
 #include <assert.h>
 #include <inttypes.h>
@@ -60,6 +68,19 @@ static Tcl_Obj *convertCXStringToObj(CXString str)
    clang_disposeString(str);
    return result;
 }
+
+#if CINDEX_VERSION_MINOR >= 32
+static Tcl_Obj *convertCXStringSetToObj(CXStringSet *strset)
+{
+   Tcl_Obj    *result = Tcl_NewObj();
+   for (int i = 0; i < strset->Count; i++) {
+      const char *cstr   = clang_getCString(strset->Strings[i]);
+      Tcl_ListObjAppendElement(NULL, result, Tcl_NewStringObj(cstr, -1));
+   }
+   clang_disposeStringSet(strset);
+   return result;
+}
+#endif
 
 typedef struct Command
 {
@@ -117,6 +138,25 @@ createNameValueTable(Tcl_Obj             **valueToNameDictPtr,
 
       Tcl_DecrRefCount(value);
       Tcl_DecrRefCount(name);
+   }
+}
+
+// Qualify an unqualified command name with the interpreter's current namespace.
+static void newQualifiedName(Tcl_Interp *interp, Tcl_Obj *nameObj, Tcl_Obj **qnameObj) {
+   char *name = Tcl_GetString(nameObj);
+   if (!strstr(name, "::")) {
+      Tcl_DString ds;
+      Tcl_DStringInit(&ds);
+      Tcl_Namespace *ns;
+      ns = Tcl_GetCurrentNamespace(interp);
+      if (ns != Tcl_GetGlobalNamespace(interp)) {
+         Tcl_DStringAppend(&ds, ns->fullName, -1);
+      }
+      Tcl_DStringAppend(&ds, "::", 2);
+      Tcl_DStringAppend(&ds, name, -1);
+      *qnameObj = Tcl_NewStringObj(Tcl_DStringValue(&ds), Tcl_DStringLength(&ds));
+   } else {
+      *qnameObj = nameObj;
    }
 }
 
@@ -329,6 +369,38 @@ static Tcl_Obj *newLayoutLongLongObj(long long value)
    }
 
    return resultObj;
+}
+
+//---------------------------------------------------------------------- visit
+
+enum {
+   TCL_RECURSE = 5,
+   TCL_RECURSE_BREAK = 6
+};
+
+typedef struct VisitInfo {
+   Tcl_Interp  *interp;
+   Tcl_Obj    **variableNames;
+   int          numVariables;
+   Tcl_Obj     *scriptObj;
+   int          returnCode;
+   void        *clientData;
+} VisitInfo;
+
+static int recurseObjCmd(ClientData     clientData,
+                         Tcl_Interp    *interp,
+                         int            objc,
+                         Tcl_Obj *const objv[])
+{
+   return TCL_RECURSE;
+}
+
+static int recurseBreakObjCmd(ClientData     clientData,
+                              Tcl_Interp    *interp,
+                              int            objc,
+                              Tcl_Obj *const objv[])
+{
+   return TCL_RECURSE_BREAK;
 }
 
 //---------------------------------------------------------------------- enum
@@ -663,6 +735,20 @@ static int getRangeFromObj(Tcl_Interp    *interp,
    return TCL_ERROR;
 }
 
+#if CINDEX_VERSION_MINOR >= 22
+static Tcl_Obj *newRangeListObj(CXSourceRangeList *rangeList)
+{
+   Tcl_Obj *resultObj = Tcl_NewListObj(0, NULL);
+
+   for (int i = 0; i < rangeList->count; i++) {
+      Tcl_Obj *rangeObj = newRangeObj(rangeList->ranges[i]);
+      Tcl_ListObjAppendElement(NULL, resultObj, rangeObj);
+   }
+
+   return resultObj;
+}
+#endif
+
 static Tcl_Obj *newPresumedLocationObj(CXSourceLocation location)
 {
    enum {
@@ -730,26 +816,48 @@ static Tcl_Obj *newDecodedLocationObj(CXFile   file,
    return Tcl_NewListObj(nelms, elms);
 }
 
-//---------------------------------------------------------------------- index
+//---------------------------------------------------- index & translationUnit
 
 /** The information associated to an index Tcl command.
  */
 typedef struct IndexInfo
 {
    Tcl_Interp *interp;
-   Tcl_Obj    *children;        // Tcl list of child, such as a translation
-                                // unit, command names
+   Tcl_Command cmd;
    CXIndex     index;
 } IndexInfo;
 
-static IndexInfo *createIndexInfo(Tcl_Interp *interp, CXIndex index)
+/** The information associated to a translationUnit Tcl command.
+ */
+typedef struct TUInfo
+{
+   struct TUInfo     *next;
+   IndexInfo         *parent;
+   Tcl_Command        cmd;
+   CXTranslationUnit  translationUnit;
+} TUInfo;
+
+/** Table holding all created translation units's command info.
+ */
+static TUInfo *tuHashTable[32];
+
+/**
+ * Calculate a hash of a translationUnit.
+ */
+static int tuHash(CXTranslationUnit tu)
+{
+   int hashTableSize = sizeof tuHashTable / sizeof tuHashTable[0];
+   return ((uintptr_t)tu / (sizeof(void *) * 4)) % hashTableSize;
+}
+
+//---------------------------------------------------------------------- index
+
+static IndexInfo *createIndexInfo(Tcl_Interp *interp, CXIndex index, Tcl_Command cmd)
 {
    IndexInfo *info = (IndexInfo *)Tcl_Alloc(sizeof *info);
    info->interp    = interp;
-   info->children  = Tcl_NewObj();
    info->index     = index;
-
-   Tcl_IncrRefCount(info->children);
+   info->cmd       = cmd;
 
    return info;
 }
@@ -760,142 +868,40 @@ static IndexInfo *createIndexInfo(Tcl_Interp *interp, CXIndex index)
  */
 static void indexDeleteProc(ClientData clientData)
 {
-   int status = TCL_OK;
-
    IndexInfo *info = (IndexInfo *)clientData;
 
    Tcl_Interp *interp = info->interp;
 
-   // Until info->children becomes empty, delete the last command in the list.
-   for (;;) {
-      int n;
-      status = Tcl_ListObjLength(NULL, info->children, &n);
-      if (status != TCL_OK) {
-         goto corrupted;
+   int numentries = sizeof tuHashTable / sizeof tuHashTable[0];
+   for (int i = 0; i < numentries; i++) {
+      for (TUInfo *t = tuHashTable[i]; t != NULL; t = t->next) {
+         if (t->parent == info) {
+            Tcl_DeleteCommandFromToken(interp, t->cmd);
+         }
       }
-
-      if (n <= 0) {
-         break;
-      }
-
-      Tcl_Obj *child;
-      status = Tcl_ListObjIndex(NULL, info->children, n - 1, &child);
-      if (status != TCL_OK) {
-         goto corrupted;
-      }
-
-      Tcl_IncrRefCount(child);
-      const char *childName = Tcl_GetStringFromObj(child, NULL);
-      Tcl_DeleteCommand(interp, childName);
-      Tcl_DecrRefCount(child);
    }
 
    clang_disposeIndex(info->index);
-   Tcl_DecrRefCount(info->children);
    Tcl_Free((char *)info);
 
    return;
-
- corrupted:
-   Tcl_Panic("%s: info->children corrupted", __func__);
-}
-
-static void indexAddChild(IndexInfo *info, Tcl_Obj *child)
-{
-   Tcl_Obj *children = info->children;
-   if (Tcl_IsShared(children)) {
-      Tcl_Obj *newChildren = Tcl_DuplicateObj(children);
-      Tcl_DecrRefCount(children);
-      Tcl_IncrRefCount(newChildren);
-      info->children = children = newChildren;
-   }
-
-   int status = Tcl_ListObjAppendElement(NULL, children, child);
-   if (status != TCL_OK) {
-      Tcl_Panic("%s: children list corrupted", __func__);
-   }
-}
-
-static void indexRemoveChild(IndexInfo *info, Tcl_Obj *child)
-{
-   Tcl_Obj *children = info->children;
-   if (Tcl_IsShared(children)) {
-      Tcl_Obj *newChildren = Tcl_DuplicateObj(children);
-      Tcl_DecrRefCount(children);
-      Tcl_IncrRefCount(newChildren);
-      info->children = children = newChildren;
-   }
-
-   int n;
-   int status  = Tcl_ListObjLength(NULL, children, &n);
-   if (status != TCL_OK) {
-      Tcl_Panic("%s: children list corrupted", __func__);
-   }
-
-   int         child_strlen = 0;
-   const char *child_str    = Tcl_GetStringFromObj(child, &child_strlen);
-   int         found        = 0;
-   for (int i = n - 1; 0 <= i; --i) {
-
-      Tcl_Obj *elm;
-      status = Tcl_ListObjIndex(NULL, children, i, &elm);
-      if (status != TCL_OK) {
-         break;
-      }
-
-      int         elm_strlen;
-      const char *elm_str = Tcl_GetStringFromObj(elm, &elm_strlen);
-
-      if (elm_str == child_str
-          || (elm_strlen == child_strlen
-              && memcmp(elm_str, child_str, elm_strlen) == 0)) {
-         found = 1;
-         status = Tcl_ListObjReplace(NULL, children, i, 1, 0, NULL);
-         break;
-      }
-
-   }
-
-   if (status == TCL_OK && ! found) {
-      Tcl_Panic("child %s doesn't exist in the children list\n", child_str);
-   }
 }
 
 //----------------------------------------------------------- translation unit
 
-typedef struct TUInfo
-{
-   struct TUInfo     *next;
-   IndexInfo         *parent;
-   Tcl_Obj           *name;
-   CXTranslationUnit  translationUnit;
-} TUInfo;
-
-static TUInfo *tuHashTable[32];
-
-static int tuHash(CXTranslationUnit tu)
-{
-   int hashTableSize = sizeof tuHashTable / sizeof tuHashTable[0];
-   return ((uintptr_t)tu / (sizeof(void *) * 4)) % hashTableSize;
-}
-
 static TUInfo * createTUInfo(IndexInfo         *parent,
-                             Tcl_Obj           *tuName,
+                             Tcl_Command       cmd,
                              CXTranslationUnit  tu)
 {
    TUInfo *info = (TUInfo *)Tcl_Alloc(sizeof *info);
 
    info->parent          = parent;
-   info->name            = tuName;
    info->translationUnit = tu;
-
-   Tcl_IncrRefCount(tuName);
+   info->cmd             = cmd;
 
    int hash          = tuHash(tu);
    info->next        = tuHashTable[hash];
    tuHashTable[hash] = info;
-
-   indexAddChild(parent, tuName);
 
    return info;
 }
@@ -904,15 +910,12 @@ static void tuDeleteProc(ClientData clientData)
 {
    TUInfo *info = (TUInfo *)clientData;
 
-   indexRemoveChild(info->parent, info->name);
-
-   Tcl_DecrRefCount(info->name);
    clang_disposeTranslationUnit(info->translationUnit);
 
    int      hash = tuHash(info->translationUnit);
    TUInfo **prev = &tuHashTable[hash];
    while (*prev != info) {
-      prev = &info->next;
+      prev = &((*prev)->next);
    }
    *prev = info->next;
 
@@ -1116,8 +1119,12 @@ static void createCursorKindTable(void)
         CXCursor_ObjCDynamicDecl },
       { "CXXAccessSpecifier",
         CXCursor_CXXAccessSpecifier },
-      { "FirstRef",
-        CXCursor_FirstRef },
+      /* { "CXCursor_FirstDecl", */
+      /*   CXCursor_FirstDecl }, */
+      /* { "CXCursor_LastDecl", */
+      /*   CXCursor_LastDecl }, */
+      /* { "FirstRef", */
+      /*   CXCursor_FirstRef }, */
       { "ObjCSuperClassRef",
         CXCursor_ObjCSuperClassRef },
       { "ObjCProtocolRef",
@@ -1140,6 +1147,10 @@ static void createCursorKindTable(void)
         CXCursor_OverloadedDeclRef },
       { "VariableRef",
         CXCursor_VariableRef },
+      /* { "LastRef", */
+      /*   CXCursor_LastRef }, */
+      /* { "FirstInvalid", */
+      /*   CXCursor_FirstInvalid }, */
       { "InvalidFile",
         CXCursor_InvalidFile },
       { "NoDeclFound",
@@ -1148,6 +1159,10 @@ static void createCursorKindTable(void)
         CXCursor_NotImplemented },
       { "InvalidCode",
         CXCursor_InvalidCode },
+      /* { "LastInvalid", */
+      /*   CXCursor_LastInvalid }, */
+      /* { "FirstExpr", */
+      /*   CXCursor_FirstExpr }, */
       { "UnexposedExpr",
         CXCursor_UnexposedExpr },
       { "DeclRefExpr",
@@ -1242,6 +1257,18 @@ static void createCursorKindTable(void)
         CXCursor_ObjCBoolLiteralExpr },
       { "ObjCSelfExpr",
         CXCursor_ObjCSelfExpr },
+#if CINDEX_VERSION_MINOR >= 31
+      { "OMPArraySectionExpr",
+        CXCursor_OMPArraySectionExpr },
+#endif
+#if CINDEX_VERSION_MINOR >= 36
+      { "ObjCAvailabilityCheckExpr",
+        CXCursor_ObjCAvailabilityCheckExpr },
+#endif
+      /* { "LastExpr", */
+      /*   CXCursor_LastExpr }, */
+      /* { "FirstStmt", */
+      /*   CXCursor_FirstStmt }, */
       { "UnexposedStmt",
         CXCursor_UnexposedStmt },
       { "LabelStmt",
@@ -1272,6 +1299,8 @@ static void createCursorKindTable(void)
         CXCursor_BreakStmt },
       { "ReturnStmt",
         CXCursor_ReturnStmt },
+      /* { "GCCAsmStmt", */
+      /*   CXCursor_GCCAsmStmt }, */
       { "AsmStmt",
         CXCursor_AsmStmt },
       { "ObjCAtTryStmt",
@@ -1308,8 +1337,126 @@ static void createCursorKindTable(void)
         CXCursor_DeclStmt },
       { "OMPParallelDirective",
         CXCursor_OMPParallelDirective },
+#if CINDEX_VERSION_MINOR >= 25
+      { "OMPSimdDirective",
+        CXCursor_OMPSimdDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 28
+      { "OMPForDirective",
+        CXCursor_OMPForDirective },
+      { "OMPSectionsDirective",
+        CXCursor_OMPSectionsDirective },
+      { "OMPSectionDirective",
+        CXCursor_OMPSectionDirective },
+      { "OMPSingleDirective",
+        CXCursor_OMPSingleDirective },
+      { "OMPParallelForDirective",
+        CXCursor_OMPParallelForDirective },
+      { "OMPParallelSectionsDirective",
+        CXCursor_OMPParallelSectionsDirective },
+      { "OMPTaskDirective",
+        CXCursor_OMPTaskDirective },
+      { "OMPMasterDirective",
+        CXCursor_OMPMasterDirective },
+      { "OMPCriticalDirective",
+        CXCursor_OMPCriticalDirective },
+      { "OMPTaskyieldDirective",
+        CXCursor_OMPTaskyieldDirective },
+      { "OMPBarrierDirective",
+        CXCursor_OMPBarrierDirective },
+      { "OMPTaskwaitDirective",
+        CXCursor_OMPTaskwaitDirective },
+      { "OMPFlushDirective",
+        CXCursor_OMPFlushDirective },
+      { "SEHLeaveStmt",
+        CXCursor_SEHLeaveStmt },
+      { "OMPOrderedDirective",
+        CXCursor_OMPOrderedDirective },
+      { "OMPAtomicDirective",
+        CXCursor_OMPAtomicDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 29
+      { "OMPForSimdDirective",
+        CXCursor_OMPForSimdDirective },
+      { "OMPParallelForSimdDirective",
+        CXCursor_OMPParallelForSimdDirective },
+      { "OMPTargetDirective",
+        CXCursor_OMPTargetDirective },
+      { "OMPTeamsDirective",
+        CXCursor_OMPTeamsDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 31
+      { "OMPTaskgroupDirective",
+        CXCursor_OMPTaskgroupDirective },
+      { "OMPCancellationPointDirective",
+        CXCursor_OMPCancellationPointDirective },
+      { "OMPCancelDirective",
+        CXCursor_OMPCancelDirective },
+      { "OMPTargetDataDirective",
+        CXCursor_OMPTargetDataDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 32
+      { "OMPTaskLoopDirective",
+        CXCursor_OMPTaskLoopDirective },
+      { "OMPTaskLoopSimdDirective",
+        CXCursor_OMPTaskLoopSimdDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 33
+      { "OMPDistributeDirective",
+        CXCursor_OMPDistributeDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 34
+      { "OMPTargetEnterDataDirective",
+        CXCursor_OMPTargetEnterDataDirective },
+      { "OMPTargetExitDataDirective",
+        CXCursor_OMPTargetExitDataDirective },
+      { "OMPTargetParallelDirective",
+        CXCursor_OMPTargetParallelDirective },
+      { "OMPTargetParallelForDirective",
+        CXCursor_OMPTargetParallelForDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 35
+      { "OMPTargetUpdateDirective",
+        CXCursor_OMPTargetUpdateDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 36
+      { "OMPDistributeParallelForDirective",
+        CXCursor_OMPDistributeParallelForDirective },
+      { "OMPDistributeSimdDirective",
+        CXCursor_OMPDistributeSimdDirective },
+      { "OMPTargetParallelForSimdDirective",
+        CXCursor_OMPTargetParallelForSimdDirective },
+      { "OMPTargetSimdDirective",
+        CXCursor_OMPTargetSimdDirective },
+      { "OMPTeamsDistributeDirective",
+        CXCursor_OMPTeamsDistributeDirective },
+      { "OMPTeamsDistributeSimdDirective",
+        CXCursor_OMPTeamsDistributeSimdDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 37
+      { "OMPTeamsDistributeParallelForSimdDirective",
+        CXCursor_OMPTeamsDistributeParallelForSimdDirective },
+#endif
+#if CINDEX_VERSION_MINOR >= 38
+      { "OMPTeamsDistributeParallelForDirective",
+        CXCursor_OMPTeamsDistributeParallelForDirective },
+      { "OMPTargetTeamsDirective",
+        CXCursor_OMPTargetTeamsDirective },
+      { "OMPTargetTeamsDistributeDirective",
+        CXCursor_OMPTargetTeamsDistributeDirective },
+      { "OMPTargetTeamsDistributeParallelForDirective",
+        CXCursor_OMPTargetTeamsDistributeParallelForDirective },
+      { "OMPTargetTeamsDistributeParallelForSimdDirective",
+        CXCursor_OMPTargetTeamsDistributeParallelForSimdDirective },
+      { "OMPTargetTeamsDistributeSimdDirective",
+        CXCursor_OMPTargetTeamsDistributeSimdDirective },
+#endif
+      /* { "LastStmt", */
+      /*   CXCursor_LastStmt }, */
       { "TranslationUnit",
         CXCursor_TranslationUnit },
+      /* { "FirstAttr", */
+      /*   CXCursor_FirstAttr }, */
       { "UnexposedAttr",
         CXCursor_UnexposedAttr },
       { "IBActionAttr",
@@ -1328,16 +1475,77 @@ static void createCursorKindTable(void)
         CXCursor_AsmLabelAttr },
       { "PackedAttr",
         CXCursor_PackedAttr },
+#if CINDEX_VERSION_MINOR >= 26
+      { "PureAttr",
+        CXCursor_PureAttr },
+      { "ConstAttr",
+        CXCursor_ConstAttr },
+      { "NoDuplicateAttr",
+        CXCursor_NoDuplicateAttr },
+#endif
+#if CINDEX_VERSION_MINOR >= 28
+      { "CUDAConstantAttr",
+        CXCursor_CUDAConstantAttr },
+      { "CUDADeviceAttr",
+        CXCursor_CUDADeviceAttr },
+      { "CUDAGlobalAttr",
+        CXCursor_CUDAGlobalAttr },
+      { "CUDAHostAttr",
+        CXCursor_CUDAHostAttr },
+      { "CUDASharedAttr",
+        CXCursor_CUDASharedAttr },
+#endif
+#if CINDEX_VERSION_MINOR >= 31
+      { "VisibilityAttr",
+        CXCursor_VisibilityAttr },
+#endif
+#if CINDEX_VERSION_MINOR >= 32
+      { "DLLExport",
+        CXCursor_DLLExport },
+      { "DLLImport",
+        CXCursor_DLLImport },
+#endif
+      /* { "LastAttr", */
+      /*   CXCursor_LastAttr }, */
+      /* { "FirstPreprocessing", */
+      /*   CXCursor_FirstPreprocessing }, */
       { "PreprocessingDirective",
         CXCursor_PreprocessingDirective },
       { "MacroDefinition",
         CXCursor_MacroDefinition },
       { "MacroExpansion",
         CXCursor_MacroExpansion },
+      { "MacroInstantiation",
+        CXCursor_MacroInstantiation },
       { "InclusionDirective",
         CXCursor_InclusionDirective },
+      /* { "LastPreprocessing", */
+      /*   CXCursor_LastPreprocessing }, */
+      /* { "FirstExtraDecl", */
+      /*   CXCursor_FirstExtraDecl }, */
       { "ModuleImportDecl",
         CXCursor_ModuleImportDecl },
+#if CINDEX_VERSION_MINOR >= 30
+      { "OverloadCandidate",
+        CXCursor_OverloadCandidate },
+#endif
+#if CINDEX_VERSION_MINOR >= 32
+      { "TypeAliasTemplateDecl",
+        CXCursor_TypeAliasTemplateDecl },
+#endif
+#if CINDEX_VERSION_MINOR >= 36
+      { "StaticAssert",
+        CXCursor_StaticAssert },
+      { "FriendDecl",
+        CXCursor_FriendDecl },
+#endif
+      /* { "LastExtraDecl", */
+      /*   CXCursor_LastExtraDecl }, */
+#if CINDEX_VERSION_MINOR >= 30
+      { "OverloadCandidate",
+        CXCursor_OverloadCandidate },
+#endif
+      { NULL }
    };
 
    createNameValueTable(&cursorKindNames, &cursorKindValues, table);
@@ -1399,6 +1607,10 @@ getCursorFromObj(Tcl_Interp *interp, Tcl_Obj *obj, CXCursor *cursor)
    int status = Tcl_ListObjGetElements(interp, obj, &n, &elms);
    if (status != TCL_OK) {
       return status;
+   }
+
+   if (n != nelms) {
+      goto invalid_cursor;
    }
 
    Tcl_Obj* kindObj = NULL;
@@ -1517,6 +1729,14 @@ static void createCXTypeTable(void)
         CXType_ObjCClass },
       { "ObjCSel",
         CXType_ObjCSel },
+#if CINDEX_VERSION_MINOR >= 35
+      { "Float128",
+        CXType_Float128 },
+#endif
+#if CINDEX_VERSION_MINOR >= 38
+      { "Half",
+        CXType_Half },
+#endif
       { "Complex",
         CXType_Complex },
       { "Pointer",
@@ -1553,6 +1773,14 @@ static void createCXTypeTable(void)
         CXType_DependentSizedArray },
       { "MemberPointer",
         CXType_MemberPointer },
+#if CINDEX_VERSION_MINOR >= 32
+      { "Auto",
+        CXType_Auto },
+#endif
+#if CINDEX_VERSION_MINOR >= 35
+      { "Elaborated",
+        CXType_Elaborated },
+#endif
       { NULL }
    };
 
@@ -1562,7 +1790,7 @@ static void createCXTypeTable(void)
    Tcl_IncrRefCount(typeKindValues);
 }
 
-static Tcl_Obj *newCXTypeObj(CXType type)
+static Tcl_Obj *newTypeObj(CXType type)
 {
    Tcl_Obj *kind = Tcl_NewIntObj(type.kind);
    Tcl_IncrRefCount(kind);
@@ -1678,6 +1906,87 @@ static int typeEqualObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+//-------------------------------------------------- type foreachField command
+
+#if CINDEX_VERSION_MINOR >= 30
+static enum CXVisitorResult foreachFieldHelper(CXCursor     cursor,
+                                               CXClientData clientData)
+{
+   int status = TCL_OK;
+
+   struct VisitInfo *visitInfo = (VisitInfo *)clientData;
+
+   Tcl_Obj *cursorObj = newCursorObj(cursor);
+   Tcl_Obj *fieldName = visitInfo->variableNames[0];
+   Tcl_IncrRefCount(cursorObj);
+   if (Tcl_ObjSetVar2(visitInfo->interp, fieldName,
+                      NULL, cursorObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
+
+cleanup:
+   if (cursorObj) {
+      Tcl_DecrRefCount(cursorObj);
+   }
+
+   switch (status) {
+   case TCL_OK:
+   case TCL_CONTINUE:
+      return CXVisit_Continue;
+   case TCL_BREAK:
+      return CXVisit_Break;
+   default:
+      visitInfo->returnCode = status;
+      return CXVisit_Break;
+   }
+}
+
+static int typeForeachFieldObjCmd(ClientData     clientData,
+                                  Tcl_Interp    *interp,
+                                  int            objc,
+                                  Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      recordType_ix,
+      varName_ix,
+      script_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix, objv, "recordType varName script");
+      return TCL_ERROR;
+   }
+
+   CXType type;
+   int status = getTypeFromObj(interp, objv[recordType_ix], &type);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   Tcl_Obj **varNames = (Tcl_Obj **)Tcl_Alloc(sizeof(Tcl_Obj *));
+   varNames[0] = objv[varName_ix];
+
+   VisitInfo visitInfo = {
+      .interp        = interp,
+      .variableNames = varNames,
+      .numVariables  = 1,
+      .scriptObj     = objv[script_ix],
+      .returnCode    = TCL_OK,
+   };
+
+   clang_Type_visitFields(type, foreachFieldHelper, &visitInfo);
+
+   Tcl_Free((void *)varNames);
+
+   return visitInfo.returnCode;
+}
+#endif
+
 //--------------------------------- type functionTypeCallingConvention command
 
 static Tcl_Obj *callingConvValues;
@@ -1702,14 +2011,35 @@ static void createCallingConvTable(void)
         CXCallingConv_AAPCS },
       { "AAPCS_VFP",
         CXCallingConv_AAPCS_VFP },
+#if CINDEX_VERSION_MINOR >= 36
+      { "X86RegCall",
+        CXCallingConv_X86RegCall },
+#elif CINDEX_VERSION_MINOR >= 30
+      { "Unused", 8},
+#else
       { "PnaclCall",
         CXCallingConv_PnaclCall },
+#endif
       { "IntelOclBicc",
         CXCallingConv_IntelOclBicc },
       { "X86_64Win64",
         CXCallingConv_X86_64Win64 },
       { "X86_64SysV",
         CXCallingConv_X86_64SysV },
+#if CINDEX_VERSION_MINOR >= 30
+      { "X86VectorCall",
+        CXCallingConv_X86VectorCall },
+#endif
+#if CINDEX_VERSION_MINOR >= 34
+      { "Swift",
+        CXCallingConv_Swift },
+#endif
+#if CINDEX_VERSION_MINOR >= 35
+      { "PreserveMost",
+        CXCallingConv_PreserveMost },
+      { "PreserveAll",
+        CXCallingConv_PreserveAll },
+#endif
       { "Invalid",
         CXCallingConv_Invalid },
       { "Unexposed",
@@ -1723,6 +2053,44 @@ static void createCallingConvTable(void)
    Tcl_IncrRefCount(callingConvValues);
 }
 
+#if CINDEX_VERSION_MINOR >= 33
+//-------------------------------------------------- type objCEncoding command
+
+static int typeObjCEncodingObjCmd(ClientData     clientData,
+                              Tcl_Interp    *interp,
+                              int            objc,
+                              Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      type_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, 0, objv, "type");
+      return TCL_ERROR;
+   }
+
+   CXType cxtype;
+   int status = getTypeFromObj(interp, objv[type_ix], &cxtype);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   Tcl_Obj    *resultObj = NULL;
+   if (CXType_Invalid == cxtype.kind) {
+      resultObj = Tcl_NewObj();
+   } else {
+      CXString objcencoding = clang_Type_getObjCEncoding(cxtype);
+      resultObj = convertCXStringToObj(objcencoding);
+   }
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
+#endif
 //------------------------------------------------------ type offsetof command
 
 static int typeOffsetOfObjCmd(ClientData     clientData,
@@ -2030,7 +2398,7 @@ static int typeToTypeObjCmd(ClientData     clientData,
    }
 
    CXType   result    = ((CXType (*)(CXType))clientData)(type);
-   Tcl_Obj *resultObj = newCXTypeObj(result);
+   Tcl_Obj *resultObj = newTypeObj(result);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
@@ -2070,7 +2438,7 @@ static int typeUnsignedToTypeObjCmd(ClientData     clientData,
    typedef CXType (*ProcType)(CXType, unsigned);
 
    CXType   result    = ((ProcType)clientData)(type, number);
-   Tcl_Obj *resultObj = newCXTypeObj(result);
+   Tcl_Obj *resultObj = newTypeObj(result);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
@@ -2103,6 +2471,55 @@ static int typeToLayoutLongLongObjCmd(ClientData     clientData,
    long long  result    = ((long long (*)(CXType))clientData)(cxtype);
    Tcl_Obj   *resultObj = newLayoutLongLongObj(result);
    Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
+//-------------------------------------------------- type -> type list command
+
+typedef struct TypeToTypeListInfo {
+    int (*getNum)(CXType);
+    CXType (*getIndex)(CXType, unsigned);
+} TypeToTypeListInfo;
+
+static int typeToTypeListObjCmd(ClientData     clientData,
+                                Tcl_Interp    *interp,
+                                int            objc,
+                                Tcl_Obj *const objv[]) {
+   enum {
+      command_ix,
+      type_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "type");
+      return TCL_ERROR;
+   }
+
+   CXType type;
+   int status = getTypeFromObj(interp, objv[type_ix], &type);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   TypeToTypeListInfo *procs = ((TypeToTypeListInfo *)clientData);
+
+   int num = procs->getNum(type);
+   if (num > 0) {
+      Tcl_Obj **results
+         = (Tcl_Obj **)Tcl_Alloc(sizeof(Tcl_Obj *) * num);
+      for (int i = 0; i < num; i++) {
+         results[i] = newTypeObj(procs->getIndex(type, i));
+      }
+
+      Tcl_Obj *resultObj = Tcl_NewListObj(num, results);
+      Tcl_SetObjResult(interp, resultObj);
+
+      Tcl_Free((char *)results);
+   } else {
+      Tcl_SetObjResult(interp, Tcl_NewListObj(0, NULL));
+   }
 
    return TCL_OK;
 }
@@ -2140,6 +2557,61 @@ static int cursorEqualObjCmd(ClientData     clientData,
 
    return TCL_OK;
 }
+
+#if CINDEX_VERSION_MINOR >= 33
+//---------------------------------------------------- cursor evaluate command
+
+static int cursorEvaluateObjCmd(ClientData     clientData,
+                                Tcl_Interp    *interp,
+                                int            objc,
+                                Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      cursor_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   CXCursor cursor;
+   int status = getCursorFromObj(interp, objv[cursor_ix], &cursor);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   Tcl_Obj *resultObj = NULL;
+
+   CXEvalResult evalresult = clang_Cursor_Evaluate(cursor);
+
+   switch (clang_EvalResult_getKind(evalresult)) {
+   case CXEval_Int:
+#if CINDEX_VERSION_MINOR >= 37
+      resultObj = Tcl_NewIntObj(clang_EvalResult_isUnsignedInt(evalresult)
+                                ? clang_EvalResult_getAsUnsigned(evalresult)
+                                : clang_EvalResult_getAsLongLong(evalresult));
+#else
+      resultObj = Tcl_NewIntObj(clang_EvalResult_getAsInt(evalresult));
+#endif
+      break;
+   case CXEval_Float:
+      resultObj = Tcl_NewDoubleObj(clang_EvalResult_getAsDouble(evalresult));
+      break;
+   default:
+      resultObj = Tcl_NewStringObj(clang_EvalResult_getAsStr(evalresult), -1);
+      break;
+   }
+
+   clang_EvalResult_dispose(evalresult);
+
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+#endif
 
 //-------------------------------------- cursor::enumConstantDeclValue command
 
@@ -2403,7 +2875,7 @@ static int cursorPlatformAvailabilityObjCmd(ClientData     clientData,
       elms[platform_tag_ix]
          = availabilityPlatformTagObj;
       elms[platform_ix]
-         = convertCXStringToObj(availability[i].Platform);
+         = Tcl_NewStringObj(clang_getCString(availability[i].Platform), -1);
 
       elms[introduced_tag_ix]
          = availabilityIntroducedTagObj;
@@ -2428,7 +2900,7 @@ static int cursorPlatformAvailabilityObjCmd(ClientData     clientData,
       elms[message_tag_ix]
          = availabilityMessageTagObj;
       elms[message_ix]
-         = convertCXStringToObj(availability[i].Message);
+         = Tcl_NewStringObj(clang_getCString(availability[i].Message), -1);
 
       Tcl_Obj *elm = Tcl_NewListObj(nelms, elms);
       Tcl_ListObjAppendElement(NULL, resultElms[i], elm);
@@ -2539,7 +3011,9 @@ static int cursorTranslationUnitObjCmd(ClientData     clientData,
       Tcl_Panic("invalid cursor");
    }
 
-   Tcl_SetObjResult(interp, info->name);
+   Tcl_Obj *tuObj = Tcl_NewObj();
+   Tcl_GetCommandFullName(interp, info->cmd, tuObj);
+   Tcl_SetObjResult(interp, tuObj);
 
    return TCL_OK;
 }
@@ -2754,6 +3228,44 @@ static int cursorToStringObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+#if CINDEX_VERSION_MINOR >= 32
+//----------------------------------------------- cursor -> string set command
+
+static int cursorToStringSetObjCmd(ClientData     clientData,
+                                   Tcl_Interp    *interp,
+                                   int            objc,
+                                   Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      cursor_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   CXCursor cursor;
+   int status = getCursorFromObj(interp, objv[cursor_ix], &cursor);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CXStringSet *result    = ((CXStringSet *(*)(CXCursor))clientData)(cursor);
+   Tcl_Obj     *resultObj = NULL;
+   if (result) {
+      resultObj = convertCXStringSetToObj(result);
+   } else {
+      resultObj = Tcl_NewObj();
+   }
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
+#endif
 //----------------------------------------------------- cursor -> file command
 
 static int cursorToFileObjCmd(ClientData     clientData,
@@ -2988,7 +3500,7 @@ static int cursorToTypeObjCmd(ClientData     clientData,
    }
 
    CXType   result    = ((CXType (*)(CXCursor))clientData)(cursor);
-   Tcl_Obj *resultObj = newCXTypeObj(result);
+   Tcl_Obj *resultObj = newTypeObj(result);
    Tcl_SetObjResult(interp, resultObj);
 
    return TCL_OK;
@@ -3073,6 +3585,136 @@ static int cursorToKindToBoolObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+#if CINDEX_VERSION_MINOR >= 30
+//----------------------------------------- cursor -> layout long long command
+
+static int cursorToLayoutLongLongObjCmd(ClientData     clientData,
+                                        Tcl_Interp    *interp,
+                                        int            objc,
+                                        Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      cursor_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   CXCursor cxcursor;
+   int status = getCursorFromObj(interp, objv[cursor_ix], &cxcursor);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   long long  result    = ((long long (*)(CXCursor))clientData)(cxcursor);
+   Tcl_Obj   *resultObj = newLayoutLongLongObj(result);
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
+#endif
+//---------------------------------------------- cursor -> cursor list command
+
+typedef struct CursorToCursorListInfo {
+   union {
+      unsigned (*getNumUnsigned)(CXCursor);
+      int (*getNumInt)(CXCursor);
+   };
+   CXCursor (*getIndex)(CXCursor, unsigned);
+   enum {
+      CursorToCursorListInfo_Int,
+      CursorToCursorListInfo_Unsigned
+   } returnType;
+} CursorToCursorListInfo;
+
+static int cursorToCursorListObjCmd(ClientData     clientData,
+                                       Tcl_Interp    *interp,
+                                       int            objc,
+                                       Tcl_Obj *const objv[]) {
+   enum {
+      command_ix,
+      cursor_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "cursor");
+      return TCL_ERROR;
+   }
+
+   CXCursor cursor;
+   int status = getCursorFromObj(interp, objv[cursor_ix], &cursor);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   CursorToCursorListInfo *procs = ((CursorToCursorListInfo *)clientData);
+   unsigned num = 0;
+   switch (procs->returnType) {
+   case CursorToCursorListInfo_Unsigned:
+      num = procs->getNumUnsigned(cursor);
+      break;
+   case CursorToCursorListInfo_Int:
+      {
+         int tmp = procs->getNumInt(cursor);
+         num = (unsigned)(tmp < 0? 0 : tmp);
+         break;
+      }
+   }
+   if (num > 0) {
+      Tcl_Obj **results
+         = (Tcl_Obj **)Tcl_Alloc(sizeof(Tcl_Obj *) * num);
+      for (int i = 0; i < num; i++) {
+         results[i] = newCursorObj(procs->getIndex(cursor, i));
+      }
+
+      Tcl_Obj *resultObj = Tcl_NewListObj(num, results);
+      Tcl_SetObjResult(interp, resultObj);
+
+      Tcl_Free((char *)results);
+   }
+
+   return TCL_OK;
+}
+
+//------------------------ translation unit instance's diagnostic list command
+
+static int tuDiagnosticListObjCmd(ClientData     clientData,
+                                  Tcl_Interp    *interp,
+                                  int            objc,
+                                  Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "");
+      return TCL_ERROR;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   unsigned numDiags = clang_getNumDiagnostics(info->translationUnit);
+   Tcl_Obj **diags = (Tcl_Obj **)Tcl_Alloc(numDiags * sizeof(Tcl_Obj *));
+   for (int i = 0; i < numDiags; i++) {
+      CXDiagnostic  diagnostic = clang_getDiagnostic(info->translationUnit, i);
+      diags[i] = newDiagnosticObj(diagnostic);
+      clang_disposeDiagnostic(diagnostic);
+   }
+   Tcl_SetObjResult(interp, Tcl_NewListObj(numDiags, diags));
+
+   Tcl_Free((char *)diags);
+
+   return TCL_OK;
+}
+
 //---------------------- translation unit instance's diagnostic decode command
 
 static int tuDiagnosticDecodeObjCmd(ClientData     clientData,
@@ -3100,7 +3742,7 @@ static int tuDiagnosticDecodeObjCmd(ClientData     clientData,
    TUInfo *info = (TUInfo *)clientData;
 
    unsigned numDiags = clang_getNumDiagnostics(info->translationUnit);
-   if (0 < index || numDiags <= index) {
+   if (0 > index || numDiags <= index) {
       Tcl_SetObjResult(interp,
                        Tcl_ObjPrintf("index %d is out of range", index));
       return TCL_ERROR;
@@ -3297,6 +3939,8 @@ static int tuCursorObjCmd(ClientData     clientData,
             return status;
          }
 
+         i++;
+
          break;
 
       case option_file:
@@ -3318,6 +3962,8 @@ static int tuCursorObjCmd(ClientData     clientData,
             goto invalid_location;
          }
 
+         i++;
+
          break;
 
       case option_line:
@@ -3336,7 +3982,7 @@ static int tuCursorObjCmd(ClientData     clientData,
                                            : "column number"));
             return TCL_ERROR;
          }
-         
+
          status = getUnsignedFromObj(interp, objv[i + 1],
                                      optionNumber == option_line
                                      ? &line
@@ -3344,6 +3990,8 @@ static int tuCursorObjCmd(ClientData     clientData,
          if (status != TCL_OK) {
             return status;
          }
+
+         i++;
 
          break;
 
@@ -3367,6 +4015,8 @@ static int tuCursorObjCmd(ClientData     clientData,
             return status;
          }
 
+         i++;
+
          break;
 
       default:
@@ -3382,6 +4032,7 @@ static int tuCursorObjCmd(ClientData     clientData,
       | (1 << option_line)
       | (1 << option_column);
    unsigned offset_form = (1 << option_file) | (1 << option_offset);
+   unsigned location_form = (1 << option_location);
 
    if (options_found == 0) {
 
@@ -3398,6 +4049,10 @@ static int tuCursorObjCmd(ClientData     clientData,
 
          location = clang_getLocationForOffset(info->translationUnit,
                                                file, offset);
+
+      } else if ((options_found & location_form) == location_form) {
+
+        // Location provided as argument.
 
       } else {
 
@@ -3475,6 +4130,206 @@ static int tuDiagnosticObjCmd(ClientData     clientData,
    return subcommands[commandNumber].proc(clientData, interp,
                                           objc - subcommand_ix,
                                           objv + subcommand_ix);
+}
+
+//------------------------------------------------- tuInclusionsHelper command
+
+typedef struct InclusionsInfo {
+   unsigned    maxDepth;        /* Don't eval after this depth. */
+} InclusionsInfo;
+
+static void tuInclusionsHelper(CXFile            includedFile,
+                               CXSourceLocation *inclusionStack,
+                               unsigned          depth,
+                               CXClientData      clientData)
+{
+   int status = TCL_OK;
+
+   struct VisitInfo *visitInfo = (VisitInfo *)clientData;
+   struct InclusionsInfo *inclusionsInfo = (InclusionsInfo *)visitInfo->clientData;
+
+   /*
+    * Return value does not drive the recursion, as is the case with
+    * clang_visitChildren.  Use visitInfo to keep recursion state.
+    */
+   switch (visitInfo->returnCode) {
+   case TCL_OK:
+   case TCL_RECURSE:
+      /* Evaluate the script */
+      break;
+
+   case TCL_CONTINUE:
+      if(depth > inclusionsInfo->maxDepth) {
+         /* Do not recurse deeper than maxDepth. */
+         return;
+      } else if(depth <= inclusionsInfo->maxDepth) {
+         /* Keep recursing normally once out of the subtree. */
+         inclusionsInfo->maxDepth = 0;
+         visitInfo->returnCode = TCL_OK;
+      }
+      break;
+
+   default:
+      /* Ignore till the end for TCL_BREAK, TCL_ERROR, etc. */
+      return;
+   }
+
+
+   Tcl_Obj *filenameVarName = visitInfo->variableNames[0];
+   Tcl_Obj *stackVarName = visitInfo->variableNames[1];
+   Tcl_Obj *filenameObj = NULL;
+   Tcl_Obj *stackObj = NULL;
+
+   /* File name. */
+   CXString filename = clang_getFileName(includedFile);
+   filenameObj = convertCXStringToObj(filename);
+   Tcl_IncrRefCount(filenameObj);
+   if (Tcl_ObjSetVar2(visitInfo->interp, filenameVarName,
+                      NULL, filenameObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   /* Stack.  Grows to the right (lappend).*/
+   Tcl_Obj **elms = (Tcl_Obj **)Tcl_Alloc(depth * sizeof(Tcl_Obj *));
+   for (int i = 0; i < depth; i++) {
+      elms[depth - i - 1] = newLocationObj(inclusionStack[i]);
+   }
+   stackObj = Tcl_NewListObj(depth, elms);
+   Tcl_Free((char *)elms);
+   Tcl_IncrRefCount(stackObj);
+   if (Tcl_ObjSetVar2(visitInfo->interp, stackVarName,
+                      NULL, stackObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
+
+cleanup:
+   if (filenameObj) {
+      Tcl_DecrRefCount(filenameObj);
+   }
+   if (stackObj) {
+      Tcl_DecrRefCount(stackObj);
+   }
+
+   switch (status) {
+   case TCL_OK:
+   case TCL_RECURSE:
+      visitInfo->returnCode = status;
+      break;
+   case TCL_CONTINUE:
+      inclusionsInfo->maxDepth = depth;
+      visitInfo->returnCode = TCL_CONTINUE;
+      break;
+   case TCL_BREAK:
+      visitInfo->returnCode = TCL_BREAK;
+      break;
+   default:
+      visitInfo->returnCode = status;
+   }
+   return;
+}
+
+//----------------------------- translation unit instance's inclusions command
+
+static int tuInclusionsObjCmd(ClientData     clientData,
+                              Tcl_Interp    *interp,
+                              int            objc,
+                              Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      variableNames_ix,
+      script_ix,
+      nargs
+   };
+
+   Tcl_Obj *varNamesObj = NULL;
+   int status = TCL_OK;
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "{fileVarName filestackVarName} script");
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   int       numVars = 0;
+   Tcl_Obj **varNames = NULL;
+   varNamesObj = Tcl_DuplicateObj(objv[variableNames_ix]);
+   Tcl_IncrRefCount(varNamesObj);
+   status = Tcl_ListObjGetElements(interp, varNamesObj, &numVars, &varNames);
+   if (status != TCL_OK) {
+      goto cleanup;
+   } else if (numVars != 2) {
+      Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid loop variables: must be fileVarName filestackVarName", -1));
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   InclusionsInfo inclusionsInfo = {
+      .maxDepth         = 0,
+   };
+
+   VisitInfo visitInfo = {
+      .interp           = interp,
+      .variableNames    = varNames,
+      .numVariables     = numVars,
+      .scriptObj        = objv[script_ix],
+      .returnCode       = TCL_OK,
+      .clientData = (void *)&inclusionsInfo
+   };
+
+   clang_getInclusions(info->translationUnit, tuInclusionsHelper, &visitInfo);
+
+   /* Convert traversal-related return codes to TCL_OK. */
+   switch (visitInfo.returnCode) {
+   case TCL_OK:
+   case TCL_CONTINUE:
+   case TCL_RECURSE:
+   case TCL_BREAK:
+      status = TCL_OK;
+      break;
+   default:
+      /* Keep the interpreter's result */
+      status = visitInfo.returnCode;
+   }
+
+cleanup:
+   if (varNamesObj) {
+      Tcl_DecrRefCount(varNamesObj);
+   }
+
+   return status;
+}
+
+//---------------------------------- translation unit instance's index command
+
+static int tuIndexObjCmd(ClientData     clientData,
+                         Tcl_Interp    *interp,
+                         int            objc,
+                         Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "");
+      return TCL_ERROR;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   Tcl_Obj *tuObj = Tcl_NewObj();
+   Tcl_GetCommandFullName(interp, info->parent->cmd, tuObj);
+   Tcl_SetObjResult(interp, tuObj);
+
+   return TCL_OK;
 }
 
 //--------------- translation unit instance's isMultipleIncludeGuarded command
@@ -3801,9 +4656,12 @@ static int tuReparseObjCmd(ClientData     clientData,
    Tcl_Free((char *)unsavedFiles);
 
    if (status != 0) {
+      Tcl_Obj *tuObj = Tcl_NewObj();
+      Tcl_GetCommandFullName(interp, info->cmd, tuObj);
       Tcl_SetObjResult(interp,
                        Tcl_ObjPrintf("translation unit \"%s\" is not valid",
-                                     Tcl_GetStringFromObj(info->name, NULL)));
+                                     Tcl_GetStringFromObj(tuObj, NULL)));
+      Tcl_DecrRefCount(tuObj);
       return TCL_ERROR;
    }
 
@@ -3886,17 +4744,27 @@ static int tuSaveObjCmd(ClientData     clientData,
       return TCL_ERROR;
 
    case CXSaveError_TranslationErrors:
+   {
+      Tcl_Obj *tuObj = Tcl_NewObj();
+      Tcl_GetCommandFullName(interp, info->cmd, tuObj);
       Tcl_SetObjResult(interp,
                        Tcl_ObjPrintf("errors during translation prevented "
                                      "the attempt to save \"%s\"",
-                                     Tcl_GetStringFromObj(info->name, NULL)));
+                                     Tcl_GetStringFromObj(tuObj, NULL)));
+      Tcl_DecrRefCount(tuObj);
       return TCL_ERROR;
+   }
 
    case CXSaveError_InvalidTU:
+   {
+      Tcl_Obj *tuObj = Tcl_NewObj();
+      Tcl_GetCommandFullName(interp, info->cmd, tuObj);
       Tcl_SetObjResult(interp,
                        Tcl_ObjPrintf("invalid translation unit \"%s\"",
-                                     Tcl_GetStringFromObj(info->name, NULL)));
+                                     Tcl_GetStringFromObj(tuObj, NULL)));
+      Tcl_DecrRefCount(tuObj);
       return TCL_ERROR;
+   }
 
    default:
       Tcl_SetObjResult(interp,
@@ -3907,6 +4775,168 @@ static int tuSaveObjCmd(ClientData     clientData,
 
    return TCL_OK;
 }
+
+#if CINDEX_VERSION_MINOR >= 22
+//-------------------------- translation unit instance's skippedRanges command
+
+static int tuSkippedRangesObjCmd(ClientData     clientData,
+                                 Tcl_Interp    *interp,
+                                 int            objc,
+                                 Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      filename_ix,
+      nargs
+   };
+
+#if CINDEX_VERSION_MINOR >= 36
+   int margs = filename_ix;
+   const char *argspec = "?filename?";
+#else
+   int margs = nargs;
+   const char *argspec = "filename";
+#endif
+
+   if (objc < margs || objc > nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, argspec);
+      return TCL_ERROR;
+   }
+
+   Tcl_Obj *resultObj = NULL;
+   int      status    = TCL_OK;
+
+   if (objc == nargs) {         // filename provided
+      TUInfo *info = (TUInfo *)clientData;
+
+      CXFile file;
+      status = getFileFromObj(interp, info->translationUnit,
+                                  objv[filename_ix], &file);
+      if (status != TCL_OK) {
+         return status;
+      }
+
+      CXSourceRangeList *skippedRanges = clang_getSkippedRanges(info->translationUnit, file);
+      resultObj = newRangeListObj(skippedRanges);
+      clang_disposeSourceRangeList(skippedRanges);
+   } else {
+#if CINDEX_VERSION_MINOR >= 36
+      TUInfo *info = (TUInfo *)clientData;
+
+      CXSourceRangeList *skippedRanges = clang_getAllSkippedRanges(info->translationUnit);
+      resultObj = newRangeListObj(skippedRanges);
+      clang_disposeSourceRangeList(skippedRanges);
+#else
+      resultObj = Tcl_NewStringObj("must indicate the filename", -1);
+      status = TCL_ERROR;
+#endif
+   }
+
+   Tcl_SetObjResult(interp, resultObj);
+
+   return TCL_OK;
+}
+
+#endif
+#if CINDEX_VERSION_MINOR >= 38
+//----------------------------- translation unit instance's targetInfo command
+
+static int tuTargetInfoObjCmd(ClientData     clientData,
+                              Tcl_Interp    *interp,
+                              int            objc,
+                              Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      subcommand_ix,
+      numMandatoryArgs
+   };
+
+   if (objc < numMandatoryArgs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "subcommand");
+      return TCL_ERROR;
+   }
+
+   static Command subcommands[] = {
+      { "triple",
+        tuTargetInfoTripleObjCmd },
+      { "pointerWidth",
+        tuTargetInfoPointerWidthObjCmd },
+      { NULL },
+   };
+
+   int commandNumber;
+   int status = Tcl_GetIndexFromObjStruct(interp, objv[subcommand_ix],
+                                          subcommands, sizeof subcommands[0],
+                                          "subcommand", 0, &commandNumber);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   return subcommands[commandNumber].proc(clientData, interp,
+                                          objc - subcommand_ix,
+                                          objv + subcommand_ix);
+}
+
+//------------------------translation unit instance's targetInfoTriple command
+
+static int tuTargetInfoTripleObjCmd(ClientData     clientData,
+                                    Tcl_Interp    *interp,
+                                    int            objc,
+                                    Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "");
+      return TCL_ERROR;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   CXTargetInfo  targetinfo = clang_getTranslationUnitTargetInfo(info->translationUnit);
+   CXString      triple     = clang_TargetInfo_getTriple(targetinfo);
+   Tcl_Obj      *resultObj  = convertCXStringToObj(triple);
+   Tcl_SetObjResult(interp, resultObj);
+
+   clang_TargetInfo_dispose(targetinfo);
+
+   return TCL_OK;
+}
+
+//------------------translation unit instance's targetInfoPointerWidth command
+
+static int tuTargetInfoPointerWidthObjCmd(ClientData     clientData,
+                                          Tcl_Interp    *interp,
+                                          int            objc,
+                                          Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      nargs
+   };
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "");
+      return TCL_ERROR;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   CXTargetInfo  targetinfo   = clang_getTranslationUnitTargetInfo(info->translationUnit);
+   int           pointerWidth = clang_TargetInfo_getPointerWidth(targetinfo);
+   Tcl_Obj      *resultObj    = Tcl_NewIntObj(pointerWidth);
+   Tcl_SetObjResult(interp, resultObj);
+
+   clang_TargetInfo_dispose(targetinfo);
+
+   return TCL_OK;
+}
+
+#endif
 
 //----------------------------- translation unit instance's sourceFile command
 
@@ -3981,6 +5011,134 @@ static int tuUniqueIDObjCmd(ClientData     clientData,
    return TCL_OK;
 }
 
+#if CINDEX_VERSION_MINOR >= 13
+//----------------------------------------------- cursorAndRangeVisitor helper
+
+enum CXVisitorResult foreachCursorAndRangeVisitor(void *context,
+                                                  CXCursor cursor,
+                                                  CXSourceRange range) {
+   int status = TCL_OK;
+   Tcl_Obj *cursorObj = NULL;
+   Tcl_Obj *rangeObj = NULL;
+
+   VisitInfo *visitInfo = (VisitInfo *)context;
+
+   cursorObj = newCursorObj(cursor);
+   Tcl_IncrRefCount(cursorObj);
+   if (Tcl_ObjSetVar2(visitInfo->interp, visitInfo->variableNames[0],
+                      NULL, cursorObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   rangeObj = newRangeObj(range);
+   Tcl_IncrRefCount(rangeObj);
+   if (Tcl_ObjSetVar2(visitInfo->interp, visitInfo->variableNames[1],
+                      NULL, rangeObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
+
+cleanup:
+   if (cursorObj) {
+      Tcl_DecrRefCount(cursorObj);
+   }
+   if (rangeObj) {
+      Tcl_DecrRefCount(rangeObj);
+   }
+   switch (status) {
+   case TCL_OK:
+   case TCL_CONTINUE:
+      return CXVisit_Continue;
+   case TCL_BREAK:
+      return CXVisit_Break;
+   default:
+      visitInfo->returnCode = status;
+      return CXVisit_Break;
+   }
+}
+
+//--------------------------- translation unit instance's findIncludes command
+
+static int tuFindIncludesObjCmd(ClientData     clientData,
+                                Tcl_Interp    *interp,
+                                int            objc,
+                                Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      filename_ix,
+      varNames_ix,
+      script_ix,
+      nargs
+   };
+
+   int status = TCL_OK;
+   Tcl_Obj *varNamesObj = NULL;
+
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "filename variableNames script");
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   TUInfo *info = (TUInfo *)clientData;
+
+   int       numVars;
+   Tcl_Obj **varNames;
+   varNamesObj = Tcl_DuplicateObj(objv[varNames_ix]);
+   Tcl_IncrRefCount(varNamesObj);
+   status = Tcl_ListObjGetElements(interp, varNamesObj, &numVars, &varNames);
+   if (status != TCL_OK) {
+      goto cleanup;
+   } else if (numVars != 2) {
+      Tcl_SetObjResult(interp, Tcl_NewStringObj("invalid loop variables: must be cursor range", -1));
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   CXFile file;
+   status = getFileFromObj(interp, info->translationUnit,
+                               objv[filename_ix], &file);
+   if (status != TCL_OK) {
+      goto cleanup;
+   }
+
+   VisitInfo visitInfo = {
+      .interp = interp,
+      .variableNames = varNames,
+      .numVariables = numVars,
+      .scriptObj = objv[script_ix],
+      .returnCode = TCL_OK
+   };
+   CXCursorAndRangeVisitor visitor = {
+      .context = (void *)&visitInfo,
+      .visit = foreachCursorAndRangeVisitor,
+   };
+   CXResult result = clang_findIncludesInFile(info->translationUnit, file,
+                                              visitor);
+   switch (result) {
+   case CXResult_Success:
+   case CXResult_VisitBreak:
+      status = visitInfo.returnCode;
+      break;
+   case CXResult_Invalid:
+      Tcl_SetObjResult(interp, Tcl_NewStringObj("error while finding includes", -1));
+      status = TCL_ERROR;
+      break;
+   }
+
+cleanup:
+   if (varNamesObj) {
+      Tcl_DecrRefCount(varNamesObj);
+   }
+
+   return status;
+}
+#endif
+
 //------------------------------------------ translation unit instance command
 
 static int tuInstanceObjCmd(ClientData     clientData,
@@ -4004,6 +5162,16 @@ static int tuInstanceObjCmd(ClientData     clientData,
         tuCursorObjCmd },
       { "diagnostic",
         tuDiagnosticObjCmd },
+      { "diagnostics",
+        tuDiagnosticListObjCmd },
+#if CINDEX_VERSION_MINOR >= 13
+      { "findIncludes",
+        tuFindIncludesObjCmd },
+#endif
+      { "inclusions",
+        tuInclusionsObjCmd },
+      { "index",
+        tuIndexObjCmd },
       { "isMultipleIncludeGuarded",
         tuIsMultipleIncludeGuardedObjCmd },
       { "location",
@@ -4018,6 +5186,12 @@ static int tuInstanceObjCmd(ClientData     clientData,
         tuSaveObjCmd },
       { "sourceFile",
         tuSourceFileObjCmd },
+      { "skippedRanges",
+        tuSkippedRangesObjCmd },
+#if CINDEX_VERSION_MINOR >= 38
+      { "targetInfo",
+        tuTargetInfoObjCmd },
+#endif
       { "uniqueID",
         tuUniqueIDObjCmd },
       { NULL },
@@ -4094,15 +5268,15 @@ static int indexNameOptionsObjCmd(ClientData     clientData,
 //------------------------------------------ indexName translationUnit command
 
 enum {
-   parseOptions_parseLater,
    parseOptions_sourceFile,
+   parseOptions_precompiledFile,
    parseOptions_unsavedFile,
    parseOptions_firstFlag
 };
 
 static const char *parseOptions[] = {
-   "-parseLater",
    "-sourceFile",
+   "-precompiledFile",
    "-unsavedFile",
 
    // flags
@@ -4114,6 +5288,12 @@ static const char *parseOptions[] = {
    "-cxxChainedPCH",
    "-skipFunctionBodies",
    "-includeBriefCommentsInCodeCompletion",
+#if CINDEX_VERSION_MINOR >= 33
+   "-createPreambleOnFirstParse",
+#endif
+#if CINDEX_VERSION_MINOR >= 34
+   "-keepGoing",
+#endif
    NULL
 };
 
@@ -4134,7 +5314,10 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
       goto wrong_num_args;
    }
 
-   int         doParse         = 1;
+   enum {
+      parse_source,
+      parse_preparsed
+   }           parse           = parse_source;
    unsigned    flags           = 0;
    const char *sourceFilename  = NULL;
    int         numUnsavedFiles = 0;
@@ -4163,10 +5346,6 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
       }
 
       switch (optionNumber) {
-      case parseOptions_parseLater: // -parseLater
-         doParse = 0;
-         break;
-
       case parseOptions_sourceFile: // -sourceFile filename
          if (objc <= i + 1) {
             Tcl_WrongNumArgs(interp, i, objv, "filename ...");
@@ -4186,6 +5365,17 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
          ++numUnsavedFiles;
          Tcl_ListObjAppendElement(NULL, unsavedFileList, objv[++i]);
          Tcl_ListObjAppendElement(NULL, unsavedFileList, objv[++i]);
+         break;
+
+      case parseOptions_precompiledFile: // -precompiledFile filename
+         parse = parse_preparsed;
+         if (objc <= i + 2) {
+            Tcl_WrongNumArgs(interp, i, objv, "-precompiledFile filename");
+            Tcl_DecrRefCount(unsavedFileList);
+            return TCL_ERROR;
+         }
+         sourceFilename = Tcl_GetStringFromObj(objv[i + 1], NULL);
+         ++i;
          break;
 
       default:
@@ -4211,31 +5401,80 @@ static int indexNameTranslationUnitObjCmd(ClientData     clientData,
    Tcl_DecrRefCount(unsavedFileList);
 
    IndexInfo *parent = (IndexInfo *)clientData;
-   CXTranslationUnit tu;
-   if (doParse) {
+   CXTranslationUnit tu = NULL;
+#if CINDEX_VERSION_MINOR >= 23
+   enum CXErrorCode ec;
+#endif
+   switch (parse) {
+   case parse_source:
+#if CINDEX_VERSION_MINOR >= 23
+      ec = clang_parseTranslationUnit2(parent->index, sourceFilename,
+                                       (const char *const *)args, nargs,
+                                       unsavedFiles, numUnsavedFiles, flags,
+                                       &tu);
+#else
       tu = clang_parseTranslationUnit(parent->index, sourceFilename,
                                       (const char *const *)args, nargs,
                                       unsavedFiles, numUnsavedFiles, flags);
-   } else {
-      tu = clang_createTranslationUnitFromSourceFile
-         (parent->index, sourceFilename,
-          nargs, (const char *const *)args,
-          numUnsavedFiles, unsavedFiles);
+#endif
+      break;
+   case parse_preparsed:
+#if CINDEX_VERSION_MINOR >= 23
+      ec = clang_createTranslationUnit2(parent->index, sourceFilename, &tu);
+#else
+      tu = clang_createTranslationUnit(parent->index, sourceFilename);
+#endif
+      break;
+   default:
+      tu = NULL;
    }
 
+   Tcl_Free((char *)args);
    Tcl_Free((char *)unsavedFiles);
 
+   Tcl_Obj *err = NULL;
+#if CINDEX_VERSION_MINOR >= 23
+   switch (ec) {
+   case CXError_Failure:
+     err = Tcl_NewStringObj("failed to create translation unit.", -1);
+     break;
+   case CXError_Crashed:
+     err = Tcl_NewStringObj("failed to create translation unit: libclang crashed.", -1);
+     break;
+   case CXError_InvalidArguments:
+     err = Tcl_NewStringObj("failed to create translation unit: invalid arguments.", -1);
+     break;
+   case CXError_ASTReadError:
+     err = Tcl_NewStringObj("failed to create translation unit: AST deserialization failed.", -1);
+     break;
+   case CXError_Success:
+     /* Just don't set err. */
+     break;
+   }
+#else
    if (tu == NULL) {
-      Tcl_SetObjResult(interp,
-                       Tcl_NewStringObj("failed to create translation unit.",
-                                        -1));
+      err = Tcl_NewStringObj("failed to create translation unit.", -1);
+   }
+#endif
+   if (err != NULL) {
+      Tcl_SetObjResult(interp, err);
       return TCL_ERROR;
    }
 
-   TUInfo     *info        = createTUInfo(parent, tuNameObj, tu);
-   const char *commandName = Tcl_GetStringFromObj(tuNameObj, NULL);
-   Tcl_CreateObjCommand(interp, commandName,
-                        tuInstanceObjCmd, info, tuDeleteProc);
+   Tcl_Obj *commandNameObj = NULL;
+   newQualifiedName(interp, tuNameObj, &commandNameObj);
+
+   Tcl_Command cmd = Tcl_CreateObjCommand(interp, Tcl_GetString(commandNameObj),
+                                          tuInstanceObjCmd, NULL, tuDeleteProc);
+   Tcl_CmdInfo cmdinfo;
+   TUInfo     *info = createTUInfo(parent, cmd, tu);
+   Tcl_GetCommandInfoFromToken(cmd, &cmdinfo);
+   cmdinfo.objClientData = info;
+   cmdinfo.clientData = info;
+   cmdinfo.deleteData = info;
+   Tcl_SetCommandInfoFromToken(cmd, &cmdinfo);
+
+   Tcl_SetObjResult(interp, commandNameObj);
 
    return TCL_OK;
 
@@ -4631,57 +5870,135 @@ static int rangeToLocationObjCmd(ClientData     clientData,
 
 //------------------------------------------------------- foreachChild command
 
-enum {
-   TCL_RECURSE = 5
-};
-
-struct ForeachChildInfo
-{
-   Tcl_Interp *interp;
-   Tcl_Obj    *childName;
-   Tcl_Obj    *parentName;
-   Tcl_Obj    *scriptObj;
-   int         returnCode;
-};
+typedef struct ForeachChildInfo {
+   Tcl_Obj    *ancestorStackObj;
+} ForeachChildInfo;
 
 static enum CXChildVisitResult foreachChildHelper(CXCursor     cursor,
-                                                  CXCursor     parent,
+                                                  CXCursor     parentCursor,
                                                   CXClientData clientData)
 {
-   struct ForeachChildInfo *visitInfo = (struct ForeachChildInfo *)clientData;
+   int status = TCL_OK;
+   Tcl_Obj *childObj = NULL;
+   Tcl_Obj *parentObj = NULL;
 
-   Tcl_Obj *cursorObj = newCursorObj(cursor);
-   if (Tcl_ObjSetVar2(visitInfo->interp, visitInfo->childName,
-                      NULL, cursorObj, TCL_LEAVE_ERR_MSG) == NULL) {
-      return TCL_ERROR;
+   VisitInfo *visitInfo = (VisitInfo *)clientData;
+
+   /*
+    *  CXChildVisit_Break breaks out of the traversal of current cursor, while
+    *  we often want to break out of the whole traversal.  Use TCL_BREAK break
+    *  for the latter (as it's natural to think of the recursive loop a
+    *  foreach of its linearization), but still support the former behaviour
+    *  with the custom return code TCL_RECURSE_BREAK.
+    */
+   if (visitInfo->returnCode == TCL_BREAK) {
+      return CXChildVisit_Break;
    }
 
-   if (visitInfo->parentName != NULL) {
-      Tcl_Obj *parentObj = newCursorObj(parent);
-      if (Tcl_ObjSetVar2(visitInfo->interp, visitInfo->parentName,
-                         NULL, parentObj, TCL_LEAVE_ERR_MSG) == NULL) {
-         return TCL_ERROR;
+   Tcl_Obj *childVariableName = visitInfo->variableNames[0];
+   childObj = newCursorObj(cursor);
+   Tcl_IncrRefCount(childObj);
+   if (Tcl_ObjSetVar2(visitInfo->interp, childVariableName,
+                      NULL, childObj, TCL_LEAVE_ERR_MSG) == NULL) {
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   if (visitInfo->numVariables == 2) {
+      ForeachChildInfo *foreachChildInfo =
+         (ForeachChildInfo *)visitInfo->clientData;
+      Tcl_Obj  *ancestorStackObj = foreachChildInfo->ancestorStackObj;
+      int       ancestorStackSize = 0;
+      Tcl_Obj **ancestorStack = NULL;
+      CXCursor  ancestorCursor;
+      int       i;
+
+      status = Tcl_ListObjGetElements(visitInfo->interp,
+                                      ancestorStackObj,
+                                      &ancestorStackSize, &ancestorStack);
+      if (status != TCL_OK) {
+         goto cleanup;
+      }
+      for (i = ancestorStackSize - 1; i >= 0; i--) {
+         status = getCursorFromObj(visitInfo->interp, ancestorStack[i],
+                                   &ancestorCursor);
+         if (status != TCL_OK) {
+            goto cleanup;
+         }
+
+         if (clang_equalCursors(ancestorCursor, parentCursor) != 0) {
+            break;
+         }
+      }
+
+      /*
+       * Not a sibling (i would be == to ancestorStackSize - 1): either
+       * recursing or rewinding.
+       */
+      if (i < 0 || i < ancestorStackSize - 1) {
+         /* We are going to modify the list, duplicate if shared. */
+         if (Tcl_IsShared(ancestorStackObj)) {
+            ancestorStackObj = Tcl_DuplicateObj(ancestorStackObj);
+            foreachChildInfo->ancestorStackObj = ancestorStackObj;
+         }
+
+         if (i < 0) {
+            /* Not found: we are recursing. */
+            parentObj = newCursorObj(parentCursor);
+            Tcl_IncrRefCount(parentObj);
+            status = Tcl_ListObjAppendElement(visitInfo->interp, ancestorStackObj,
+                                              parentObj);
+         } else {
+            /* Found: remove rewinded ancestors. */
+            status = Tcl_ListObjReplace(visitInfo->interp, ancestorStackObj,
+                                        /* (size-1) - (i+1) */
+                                        i+1, ancestorStackSize - i,
+                                        0, NULL);
+         }
+      }
+      if (status != TCL_OK) {
+         goto cleanup;
+      }
+
+      Tcl_Obj *ancestorsVariableName = visitInfo->variableNames[1];
+      if (Tcl_ObjSetVar2(visitInfo->interp, ancestorsVariableName,
+                         NULL, ancestorStackObj, TCL_LEAVE_ERR_MSG) == NULL) {
+         status = TCL_ERROR;
+         goto cleanup;
       }
    }
 
-   int status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
-   switch (status) {
+   status = Tcl_EvalObjEx(visitInfo->interp, visitInfo->scriptObj, 0);
 
+cleanup:
+   if (childObj) {
+      Tcl_DecrRefCount(childObj);
+   }
+   if (parentObj) {
+      Tcl_DecrRefCount(parentObj);
+   }
+
+   switch (status) {
    case TCL_OK:
    case TCL_CONTINUE:
       return CXChildVisit_Continue;
-
-   case TCL_BREAK:
-      return CXChildVisit_Break;
-
    case TCL_RECURSE:
       return CXChildVisit_Recurse;
-
+   case TCL_RECURSE_BREAK:
+      return CXChildVisit_Break;
+   case TCL_BREAK:
+      visitInfo->returnCode = TCL_BREAK;
+      return CXChildVisit_Break;
    default:
       visitInfo->returnCode = status;
       return CXChildVisit_Break;
    }
 }
+
+enum ForeachChildSyntax {
+    foreachChildTopLevelSyntax,
+    foreachChildSubcommandSyntax
+};
 
 static int foreachChildObjCmd(ClientData     clientData,
                               Tcl_Interp    *interp,
@@ -4696,51 +6013,96 @@ static int foreachChildObjCmd(ClientData     clientData,
       nargs
    };
 
-   if (objc != nargs) {
-      Tcl_WrongNumArgs(interp, command_ix, objv, "varName cursor script");
-      return TCL_ERROR;
+   char *wrongNumArgsErrMsg = NULL;
+   Tcl_Obj *varNameObjArg = NULL;
+   Tcl_Obj *cursorObjArg = NULL;
+   Tcl_Obj *varNamesObj = NULL;
+   Tcl_Obj *ancestorStackObj = NULL;
+   int status = TCL_OK;
+
+   switch ((enum ForeachChildSyntax)clientData) {
+   case foreachChildTopLevelSyntax:
+      varNameObjArg = objv[varName_ix];
+      cursorObjArg = objv[cursor_ix];
+      wrongNumArgsErrMsg = "varName cursor script";
+      break;
+   case foreachChildSubcommandSyntax:
+      varNameObjArg = objv[cursor_ix];
+      cursorObjArg = objv[varName_ix];
+      wrongNumArgsErrMsg = "cursor varName script";
+      break;
    }
 
-   int       numVars;
-   Tcl_Obj **varNames;
-   int status
-      = Tcl_ListObjGetElements(interp, objv[varName_ix], &numVars, &varNames);
+   if (objc != nargs) {
+      Tcl_WrongNumArgs(interp, command_ix, objv, wrongNumArgsErrMsg);
+      status = TCL_ERROR;
+      goto cleanup;
+   }
+
+   /*
+    * I think this is a Tcl bug.  I don't modify the list, why should I need
+    * to duplicate it?  It is the bytecode guy the one that modifies it!
+    */
+   int       numVars = 0;
+   Tcl_Obj **varNames = NULL;
+   varNamesObj = Tcl_DuplicateObj(varNameObjArg);
+   Tcl_IncrRefCount(varNamesObj);
+   status = Tcl_ListObjGetElements(interp, varNamesObj, &numVars, &varNames);
    if (status != TCL_OK) {
-      return status;
+      goto cleanup;
    }
 
    if (numVars != 1 && numVars != 2) {
       Tcl_SetObjResult(interp,
                        Tcl_NewStringObj("one of two variable names "
                                         "are expected", -1));
-      return TCL_ERROR;
+      status = TCL_ERROR;
+      goto cleanup;
    }
 
    CXCursor cursor;
-   status = getCursorFromObj(interp, objv[cursor_ix], &cursor);
+   status = getCursorFromObj(interp, cursorObjArg, &cursor);
    if (status != TCL_OK) {
-      return status;
+      goto cleanup;
    }
 
-   struct ForeachChildInfo visitInfo = {
+   if (numVars == 2) {
+      ancestorStackObj = Tcl_NewObj();
+      Tcl_IncrRefCount(ancestorStackObj);
+   }
+
+   ForeachChildInfo foreachChildInfo = {
+      .ancestorStackObj = ancestorStackObj,
+   };
+
+   VisitInfo visitInfo = {
       .interp     = interp,
-      .childName  = varNames[0],
-      .parentName = numVars == 2 ? varNames[1] : NULL,
+      .variableNames = varNames,
+      .numVariables = numVars,
       .scriptObj  = objv[script_ix],
       .returnCode = TCL_OK,
+      .clientData = &foreachChildInfo,
    };
 
    clang_visitChildren(cursor, foreachChildHelper, &visitInfo);
 
-   return visitInfo.returnCode;
-}
+   status = visitInfo.returnCode;
+   switch (status) {
+   case TCL_BREAK:
+   case TCL_RECURSE_BREAK:
+      status = TCL_OK;
+      break;
+   }
 
-static int recurseObjCmd(ClientData     clientData,
-                         Tcl_Interp    *interp,
-                         int            objc,
-                         Tcl_Obj *const objv[])
-{
-   return TCL_RECURSE;
+cleanup:
+   if (ancestorStackObj) {
+      Tcl_DecrRefCount(ancestorStackObj);
+   }
+   if (varNamesObj) {
+      Tcl_DecrRefCount(varNamesObj);
+   }
+
+   return status;
 }
 
 //-------------------------------------------------------------- index command
@@ -4756,7 +6118,7 @@ static int indexObjCmd(ClientData     clientData,
       NULL
    };
 
-   const char *commandName = NULL;
+   Tcl_Obj *ixNameObj = NULL;
    unsigned    mask        = 0;
    for (int i = 1; i < objc; ++i) {
       const char *obj = Tcl_GetStringFromObj(objv[i], NULL);
@@ -4772,15 +6134,15 @@ static int indexObjCmd(ClientData     clientData,
          mask |= 1 << option;
 
       } else {
-         if (commandName != NULL) {
+         if (ixNameObj != NULL) {
             goto usage_error;
          }
 
-         commandName = Tcl_GetStringFromObj(objv[i], NULL);
+         ixNameObj = objv[i];
       }
    }
 
-   if (commandName == NULL) {
+   if (ixNameObj == NULL) {
       goto usage_error;
    }
 
@@ -4790,11 +6152,23 @@ static int indexObjCmd(ClientData     clientData,
       return TCL_ERROR;
    }
 
-   IndexInfo *info = createIndexInfo(interp, index);
 
-   Tcl_CreateObjCommand(interp, commandName,
-                        indexNameObjCmd, info, indexDeleteProc);
+   Tcl_Obj *commandNameObj = NULL;
+   newQualifiedName(interp, ixNameObj, &commandNameObj);
 
+   Tcl_Command cmd = Tcl_CreateObjCommand(interp, Tcl_GetString(commandNameObj),
+                                          indexNameObjCmd, NULL, indexDeleteProc);
+
+   Tcl_CmdInfo cmdinfo;
+   IndexInfo  *info = createIndexInfo(interp, index, cmd);
+
+   Tcl_GetCommandInfoFromToken(cmd, &cmdinfo);
+   cmdinfo.objClientData = info;
+   cmdinfo.clientData = info;
+   cmdinfo.deleteData = info;
+   Tcl_SetCommandInfoFromToken(cmd, &cmdinfo);
+
+   Tcl_SetObjResult(interp, commandNameObj);
    return TCL_OK;
 
  usage_error:
@@ -4995,6 +6369,9 @@ static BitMask objCPropertyAttributes[] = {
    { "weak" },
    { "strong" },
    { "unsafe_unretained" },
+#if CINDEX_VERSION_MINOR >= 35
+   { "class" },
+#endif
    { NULL },
 };
 
@@ -5007,6 +6384,34 @@ static EnumConsts cxxRefQualifiers = {
    }
 };
 
+#if CINDEX_VERSION_MINOR >= 29
+static EnumConsts storageClasses = {
+   .names = {
+      "Invalid",
+      "None",
+      "Extern",
+      "Static",
+      "PrivateExtern",
+      "OpenCLWorkGroupLocal",
+      "Auto",
+      "Register",
+      NULL
+   }
+};
+#endif
+
+#if CINDEX_VERSION_MINOR >= 32
+static EnumConsts visibilityKinds = {
+   .names = {
+      "Invalid",
+      "Hidden",
+      "Protected",
+      "Default",
+      NULL
+   }
+};
+#endif
+
 static CXSourceRange
 cursorGetSpellingNameRange(CXCursor cursor, unsigned index)
 {
@@ -5015,7 +6420,7 @@ cursorGetSpellingNameRange(CXCursor cursor, unsigned index)
 
 int Cindex_Init(Tcl_Interp *interp)
 {
-   if (Tcl_InitStubs(interp, "8.6", 0) == NULL) {
+   if (Tcl_InitStubs(interp, "8.5", 0) == NULL) {
       return TCL_ERROR;
    }
 
@@ -5102,11 +6507,14 @@ int Cindex_Init(Tcl_Interp *interp)
         bistObjCmd },
 #endif
       { "foreachChild",
-        foreachChildObjCmd },
+        foreachChildObjCmd,
+        (ClientData)foreachChildTopLevelSyntax },
       { "index",
         indexObjCmd },
       { "recurse",
         recurseObjCmd },
+      { "recursebreak",
+        recurseBreakObjCmd },
       { NULL }
    };
    createAndExportCommands(interp, "cindex::%s", cmdTable);
@@ -5150,10 +6558,37 @@ int Cindex_Init(Tcl_Interp *interp)
       .masks = objCPropertyAttributes
    };
 
+#if CINDEX_VERSION_MINOR >= 29
+   static CursorToEnumInfo cursorStorageClassInfo = {
+      .proc   = (int (*)(CXCursor))clang_Cursor_getStorageClass,
+      .labels = &storageClasses
+   };
+#endif
+
+#if CINDEX_VERSION_MINOR >= 32
+   static CursorToEnumInfo cursorVisibilityKindInfo = {
+      .proc   = (int (*)(CXCursor))clang_getCursorVisibility,
+      .labels = &visibilityKinds
+   };
+#endif
+
+   static CursorToCursorListInfo argumentsInfo;
+   argumentsInfo.getNumInt = &clang_Cursor_getNumArguments;
+   argumentsInfo.getIndex = &clang_Cursor_getArgument;
+   argumentsInfo.returnType = CursorToCursorListInfo_Int;
+
+   static CursorToCursorListInfo overloadedDeclsInfo;
+   overloadedDeclsInfo.getNumUnsigned = &clang_getNumOverloadedDecls;
+   overloadedDeclsInfo.getIndex = &clang_getOverloadedDecl;
+   overloadedDeclsInfo.returnType = CursorToCursorListInfo_Unsigned;
+
    static Command cursorCmdTable[] = {
       { "argument",
         cursorUnsignedToCursorObjCmd,
         clang_Cursor_getArgument },
+      { "arguments",
+        cursorToCursorListObjCmd,
+        &argumentsInfo },
       { "availability",
         cursorToEnumObjCmd,
         &cursorAvailabilityInfo },
@@ -5169,6 +6604,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "cxxAccessSpecifier",
         cursorToEnumObjCmd,
         &cursorCXXAccessSpecifierInfo },
+#if CINDEX_VERSION_MINOR >= 32
+      { "cxxManglings",
+        cursorToStringSetObjCmd,
+        clang_Cursor_getCXXManglings },
+#endif
       { "definition",
         cursorToCursorObjCmd,
         clang_getCursorDefinition },
@@ -5185,9 +6625,21 @@ int Cindex_Init(Tcl_Interp *interp)
       { "extent",
         cursorToRangeObjCmd,
         clang_getCursorExtent },
+#if CINDEX_VERSION_MINOR >= 33
+      { "evaluate",
+        cursorEvaluateObjCmd },
+#endif
+      { "foreachChild",
+        foreachChildObjCmd,
+        (ClientData)foreachChildSubcommandSyntax },
       { "fieldDeclBitWidth",
         cursorToIntObjCmd,
         clang_getFieldDeclBitWidth },
+#if CINDEX_VERSION_MINOR >= 33
+      { "hasAttrs",
+        cursorToBoolObjCmd,
+        clang_Cursor_hasAttrs },
+#endif
       { "hash",
         cursorToUnsignedObjCmd,
         clang_hashCursor },
@@ -5209,6 +6661,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "location",
         cursorToLocationObjCmd,
         clang_getCursorLocation },
+#if CINDEX_VERSION_MINOR >= 28
+      { "mangling",
+        cursorToStringObjCmd,
+        clang_Cursor_getMangling },
+#endif
       { "null",
         cursorNullObjCmd },
       { "numArguments",
@@ -5229,9 +6686,17 @@ int Cindex_Init(Tcl_Interp *interp)
       { "objCTypeEncoding",
         cursorToStringObjCmd,
         clang_getDeclObjCTypeEncoding },
-      { "overloadedDecls",
+#if CINDEX_VERSION_MINOR >= 30
+      { "offsetOfField",
+        cursorToLayoutLongLongObjCmd,
+        clang_Cursor_getOffsetOfField },
+#endif
+      { "overloadedDecl",
         cursorUnsignedToCursorObjCmd,
         clang_getOverloadedDecl },
+      { "overloadedDecls",
+        cursorToCursorListObjCmd,
+        &overloadedDeclsInfo },
       { "overriddenCursors",
         cursorOverriddenCursorsObjCmd },
       { "platformAvailability",
@@ -5262,6 +6727,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "spellingNameRange",
         cursorUnsignedToRangeObjCmd,
         cursorGetSpellingNameRange },
+#if CINDEX_VERSION_MINOR >= 29
+      { "storageClass",
+        cursorToEnumObjCmd,
+        &cursorStorageClassInfo },
+#endif
       { "translationUnit",
         cursorTranslationUnitObjCmd },
       { "templateCursorKind",
@@ -5276,6 +6746,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "USR",
         cursorToStringObjCmd,
         clang_getCursorUSR },
+#if CINDEX_VERSION_MINOR >= 32
+      { "visibility",
+        cursorToEnumObjCmd,
+        &cursorVisibilityKindInfo },
+#endif
       { NULL }
    };
    createAndExportCommands(interp, "cindex::cursor::%s", cursorCmdTable);
@@ -5286,10 +6761,36 @@ int Cindex_Init(Tcl_Interp *interp)
    Tcl_Export(interp, cursorNs, "is", 0);
 
    static Command cursorIsCmdTable[] = {
+#if CINDEX_VERSION_MINOR >= 30
+      { "anonymous",
+        cursorToBoolObjCmd,	        clang_Cursor_isAnonymous },
+#endif
       { "attribute",
         cursorToKindToBoolObjCmd,	clang_isAttribute },
       { "bitField",
         cursorToBoolObjCmd,		clang_Cursor_isBitField },
+#if CINDEX_VERSION_MINOR >= 35
+      { "cxxConstructorConverting",
+        cursorToBoolObjCmd,		clang_CXXConstructor_isConvertingConstructor },
+      { "cxxConstructorCopy",
+        cursorToBoolObjCmd,		clang_CXXConstructor_isCopyConstructor },
+      { "cxxConstructorDefault",
+        cursorToBoolObjCmd,		clang_CXXConstructor_isDefaultConstructor },
+      { "cxxConstructorMove",
+        cursorToBoolObjCmd,		clang_CXXConstructor_isMoveConstructor },
+#endif
+#if CINDEX_VERSION_MINOR >= 32
+      { "cxxFieldMutable",
+        cursorToBoolObjCmd,		clang_CXXField_isMutable },
+#endif
+#if CINDEX_VERSION_MINOR >= 25
+      { "cxxMethodConst",
+        cursorToBoolObjCmd,		clang_CXXMethod_isConst },
+#endif
+#if CINDEX_VERSION_MINOR >= 35
+      { "cxxMethodDefaulted",
+        cursorToBoolObjCmd,		clang_CXXMethod_isDefaulted },
+#endif
       { "cxxMethodPureVirtual",
         cursorToBoolObjCmd,		clang_CXXMethod_isPureVirtual },
       { "cxxMethodStatic",
@@ -5306,10 +6807,22 @@ int Cindex_Init(Tcl_Interp *interp)
         cursorToKindToBoolObjCmd,	clang_isUnexposed },
       { "expression",
         cursorToKindToBoolObjCmd,	clang_isExpression },
+#if CINDEX_VERSION_MINOR >= 33
+      { "functionInlined",
+        cursorToBoolObjCmd,		clang_Cursor_isFunctionInlined },
+#endif
       { "invalid",
         cursorToKindToBoolObjCmd,	clang_isInvalid },
       { "null",
         cursorToBoolObjCmd,		clang_Cursor_isNull },
+      { "valid",
+        cursorToBoolObjCmd},
+#if CINDEX_VERSION_MINOR >= 33
+      { "macroFunctionLike",
+        cursorToBoolObjCmd,		clang_Cursor_isMacroFunctionLike },
+      { "macroBuiltin",
+        cursorToBoolObjCmd,		clang_Cursor_isMacroBuiltin },
+#endif
       { "objCOptional",
         cursorToBoolObjCmd,		clang_Cursor_isObjCOptional },
       { "preprocessing",
@@ -5427,6 +6940,10 @@ int Cindex_Init(Tcl_Interp *interp)
    functionTypeCallingConvInfo.names = callingConvNames;
    Tcl_IncrRefCount(callingConvNames);
 
+   static TypeToTypeListInfo argTypesInfo;
+   argTypesInfo.getNum = clang_getNumArgTypes;
+   argTypesInfo.getIndex = clang_getArgType;
+
    static Command typeCmdTable[] = {
       { "alignof",
         typeToLayoutLongLongObjCmd,	
@@ -5434,6 +6951,9 @@ int Cindex_Init(Tcl_Interp *interp)
       { "argType",
         typeUnsignedToTypeObjCmd,
         clang_getArgType },
+      { "argTypes",
+        typeToTypeListObjCmd,
+        &argTypesInfo },
       { "arrayElementType",
         typeToTypeObjCmd,
         clang_getArrayElementType },
@@ -5457,15 +6977,33 @@ int Cindex_Init(Tcl_Interp *interp)
         clang_getElementType },
       { "equal",
         typeEqualObjCmd },
+#if CINDEX_VERSION_MINOR >= 30
+      { "foreachField",
+        typeForeachFieldObjCmd },
+#endif
       { "functionTypeCallingConvention",
         typeToNamedValueObjCmd,
         &functionTypeCallingConvInfo },
+#if CINDEX_VERSION_MINOR >= 35
+      { "namedType",
+        typeToTypeObjCmd,
+        clang_Type_getNamedType },
+#endif
       { "numArgTypes",
         typeToIntObjCmd,
         clang_getNumArgTypes },
       { "numElements",
         typeToLongLongObjCmd,
         clang_getNumElements },
+#if CINDEX_VERSION_MINOR >= 25
+      { "numTemplateArguments",
+        typeToIntObjCmd,
+        clang_Type_getNumTemplateArguments },
+#endif
+#if CINDEX_VERSION_MINOR >= 33
+      { "objCEncoding",
+        typeObjCEncodingObjCmd },
+#endif
       { "offsetof",
         typeOffsetOfObjCmd },
       { "pointeeType",
@@ -5480,6 +7018,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "spelling",
         typeToStringObjCmd,
         clang_getTypeSpelling },
+#if CINDEX_VERSION_MINOR >= 25
+      { "templateArgument",
+        typeUnsignedToTypeObjCmd,
+        clang_Type_getTemplateArgumentAsType },
+#endif
       { NULL }
    };
    createAndExportCommands(interp, "cindex::type::%s", typeCmdTable);
@@ -5502,6 +7045,11 @@ int Cindex_Init(Tcl_Interp *interp)
       { "restrictQualified",
         typeToBoolObjCmd,
         clang_isRestrictQualifiedType },
+#if CINDEX_VERSION_MINOR >= 38
+      { "transparentTagTypedef",
+        typeToBoolObjCmd,
+        clang_Type_isTransparentTagTypedef },
+#endif
       { "volatileQualified",
         typeToBoolObjCmd,
         clang_isVolatileQualifiedType },
@@ -5559,7 +7107,24 @@ int Cindex_Init(Tcl_Interp *interp)
       Tcl_DecrRefCount(value);
    }
 
-   Tcl_PkgProvide(interp, "cindex", "1.0");
+   {
+      Tcl_Obj *name =
+         Tcl_NewStringObj("cindex::version", -1);
+      Tcl_IncrRefCount(name);
+
+      Tcl_Obj *value = Tcl_ObjPrintf("%d.%d",
+                                     CINDEX_VERSION_MAJOR,
+                                     CINDEX_VERSION_MINOR);
+      Tcl_IncrRefCount(value);
+
+      Tcl_ObjSetVar2(interp, name, NULL, value, 0);
+      Tcl_Export(interp, cindexNs, "version", 0);
+
+      Tcl_DecrRefCount(name);
+      Tcl_DecrRefCount(value);
+   }
+
+   Tcl_PkgProvide(interp, "cindex", PACKAGE_VERSION);
 
    return TCL_OK;
 }
