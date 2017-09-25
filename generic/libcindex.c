@@ -4839,45 +4839,6 @@ static int tuSkippedRangesObjCmd(ClientData     clientData,
 
 #endif
 #if CINDEX_VERSION_MINOR >= 38
-//----------------------------- translation unit instance's targetInfo command
-
-static int tuTargetInfoObjCmd(ClientData     clientData,
-                              Tcl_Interp    *interp,
-                              int            objc,
-                              Tcl_Obj *const objv[])
-{
-   enum {
-      command_ix,
-      subcommand_ix,
-      numMandatoryArgs
-   };
-
-   if (objc < numMandatoryArgs) {
-      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "subcommand");
-      return TCL_ERROR;
-   }
-
-   static Command subcommands[] = {
-      { "triple",
-        tuTargetInfoTripleObjCmd },
-      { "pointerWidth",
-        tuTargetInfoPointerWidthObjCmd },
-      { NULL },
-   };
-
-   int commandNumber;
-   int status = Tcl_GetIndexFromObjStruct(interp, objv[subcommand_ix],
-                                          subcommands, sizeof subcommands[0],
-                                          "subcommand", 0, &commandNumber);
-   if (status != TCL_OK) {
-      return status;
-   }
-
-   return subcommands[commandNumber].proc(clientData, interp,
-                                          objc - subcommand_ix,
-                                          objv + subcommand_ix);
-}
-
 //------------------------translation unit instance's targetInfoTriple command
 
 static int tuTargetInfoTripleObjCmd(ClientData     clientData,
@@ -4934,6 +4895,45 @@ static int tuTargetInfoPointerWidthObjCmd(ClientData     clientData,
    clang_TargetInfo_dispose(targetinfo);
 
    return TCL_OK;
+}
+
+//----------------------------- translation unit instance's targetInfo command
+
+static int tuTargetInfoObjCmd(ClientData     clientData,
+                              Tcl_Interp    *interp,
+                              int            objc,
+                              Tcl_Obj *const objv[])
+{
+   enum {
+      command_ix,
+      subcommand_ix,
+      numMandatoryArgs
+   };
+
+   if (objc < numMandatoryArgs) {
+      Tcl_WrongNumArgs(interp, command_ix + 1, objv, "subcommand");
+      return TCL_ERROR;
+   }
+
+   static Command subcommands[] = {
+      { "triple",
+        tuTargetInfoTripleObjCmd },
+      { "pointerWidth",
+        tuTargetInfoPointerWidthObjCmd },
+      { NULL },
+   };
+
+   int commandNumber;
+   int status = Tcl_GetIndexFromObjStruct(interp, objv[subcommand_ix],
+                                          subcommands, sizeof subcommands[0],
+                                          "subcommand", 0, &commandNumber);
+   if (status != TCL_OK) {
+      return status;
+   }
+
+   return subcommands[commandNumber].proc(clientData, interp,
+                                          objc - subcommand_ix,
+                                          objv + subcommand_ix);
 }
 
 #endif
