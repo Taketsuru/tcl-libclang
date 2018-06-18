@@ -2587,12 +2587,13 @@ static int cursorEvaluateObjCmd(ClientData     clientData,
 
    CXEvalResult evalresult = clang_Cursor_Evaluate(cursor);
 
+   status = TCL_OK;
    switch (clang_EvalResult_getKind(evalresult)) {
    case CXEval_Int:
 #if CINDEX_VERSION_MINOR >= 37
-      resultObj = Tcl_NewIntObj(clang_EvalResult_isUnsignedInt(evalresult)
-                                ? clang_EvalResult_getAsUnsigned(evalresult)
-                                : clang_EvalResult_getAsLongLong(evalresult));
+      resultObj = Tcl_NewLongObj(clang_EvalResult_isUnsignedInt(evalresult)
+                                 ? clang_EvalResult_getAsUnsigned(evalresult)
+                                 : clang_EvalResult_getAsLongLong(evalresult));
 #else
       resultObj = Tcl_NewIntObj(clang_EvalResult_getAsInt(evalresult));
 #endif
@@ -2600,16 +2601,21 @@ static int cursorEvaluateObjCmd(ClientData     clientData,
    case CXEval_Float:
       resultObj = Tcl_NewDoubleObj(clang_EvalResult_getAsDouble(evalresult));
       break;
-   default:
+   case CXEval_ObjCStrLiteral:
+   case CXEval_StrLiteral:
+   case CXEval_CFStr:
       resultObj = Tcl_NewStringObj(clang_EvalResult_getAsStr(evalresult), -1);
       break;
+   default:
+      resultObj = Tcl_NewStringObj("cannot evaluate cursor", -1);
+      status = TCL_ERROR;
    }
 
    clang_EvalResult_dispose(evalresult);
 
    Tcl_SetObjResult(interp, resultObj);
 
-   return TCL_OK;
+   return status;
 }
 #endif
 
