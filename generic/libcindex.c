@@ -408,7 +408,7 @@ static int recurseBreakObjCmd(ClientData     clientData,
 typedef struct EnumConsts
 {
    Tcl_Obj    **labels;
-   int	        n;
+   int          n;
    const char  *names[];
 } EnumConsts;
 
@@ -4841,6 +4841,15 @@ static int tuSkippedRangesObjCmd(ClientData     clientData,
 #if CINDEX_VERSION_MINOR >= 38
 //----------------------------- translation unit instance's targetInfo command
 
+static int tuTargetInfoTripleObjCmd(ClientData     clientData,
+                                    Tcl_Interp    *interp,
+                                    int            objc,
+                                    Tcl_Obj *const objv[]);
+static int tuTargetInfoPointerWidthObjCmd(ClientData     clientData,
+                                          Tcl_Interp    *interp,
+                                          int            objc,
+                                          Tcl_Obj *const objv[]);
+
 static int tuTargetInfoObjCmd(ClientData     clientData,
                               Tcl_Interp    *interp,
                               int            objc,
@@ -6763,80 +6772,80 @@ int Cindex_Init(Tcl_Interp *interp)
    static Command cursorIsCmdTable[] = {
 #if CINDEX_VERSION_MINOR >= 30
       { "anonymous",
-        cursorToBoolObjCmd,	        clang_Cursor_isAnonymous },
+        cursorToBoolObjCmd,             clang_Cursor_isAnonymous },
 #endif
       { "attribute",
-        cursorToKindToBoolObjCmd,	clang_isAttribute },
+        cursorToKindToBoolObjCmd,       clang_isAttribute },
       { "bitField",
-        cursorToBoolObjCmd,		clang_Cursor_isBitField },
+        cursorToBoolObjCmd,             clang_Cursor_isBitField },
 #if CINDEX_VERSION_MINOR >= 35
       { "cxxConstructorConverting",
-        cursorToBoolObjCmd,		clang_CXXConstructor_isConvertingConstructor },
+        cursorToBoolObjCmd,             clang_CXXConstructor_isConvertingConstructor },
       { "cxxConstructorCopy",
-        cursorToBoolObjCmd,		clang_CXXConstructor_isCopyConstructor },
+        cursorToBoolObjCmd,             clang_CXXConstructor_isCopyConstructor },
       { "cxxConstructorDefault",
-        cursorToBoolObjCmd,		clang_CXXConstructor_isDefaultConstructor },
+        cursorToBoolObjCmd,             clang_CXXConstructor_isDefaultConstructor },
       { "cxxConstructorMove",
-        cursorToBoolObjCmd,		clang_CXXConstructor_isMoveConstructor },
+        cursorToBoolObjCmd,             clang_CXXConstructor_isMoveConstructor },
 #endif
 #if CINDEX_VERSION_MINOR >= 32
       { "cxxFieldMutable",
-        cursorToBoolObjCmd,		clang_CXXField_isMutable },
+        cursorToBoolObjCmd,             clang_CXXField_isMutable },
 #endif
 #if CINDEX_VERSION_MINOR >= 25
       { "cxxMethodConst",
-        cursorToBoolObjCmd,		clang_CXXMethod_isConst },
+        cursorToBoolObjCmd,             clang_CXXMethod_isConst },
 #endif
 #if CINDEX_VERSION_MINOR >= 35
       { "cxxMethodDefaulted",
-        cursorToBoolObjCmd,		clang_CXXMethod_isDefaulted },
+        cursorToBoolObjCmd,             clang_CXXMethod_isDefaulted },
 #endif
       { "cxxMethodPureVirtual",
-        cursorToBoolObjCmd,		clang_CXXMethod_isPureVirtual },
+        cursorToBoolObjCmd,             clang_CXXMethod_isPureVirtual },
       { "cxxMethodStatic",
-        cursorToBoolObjCmd,		clang_CXXMethod_isStatic },
+        cursorToBoolObjCmd,             clang_CXXMethod_isStatic },
       { "cxxMethodVirtual",
-        cursorToBoolObjCmd,		clang_CXXMethod_isVirtual },
+        cursorToBoolObjCmd,             clang_CXXMethod_isVirtual },
       { "declaration",
-        cursorToKindToBoolObjCmd,	clang_isDeclaration },
+        cursorToKindToBoolObjCmd,       clang_isDeclaration },
       { "definition",
-        cursorToBoolObjCmd,		clang_isCursorDefinition },
+        cursorToBoolObjCmd,             clang_isCursorDefinition },
       { "dynamicCall",
-        cursorToBoolObjCmd,		clang_Cursor_isDynamicCall },
+        cursorToBoolObjCmd,             clang_Cursor_isDynamicCall },
       { "unexposed",
-        cursorToKindToBoolObjCmd,	clang_isUnexposed },
+        cursorToKindToBoolObjCmd,       clang_isUnexposed },
       { "expression",
-        cursorToKindToBoolObjCmd,	clang_isExpression },
+        cursorToKindToBoolObjCmd,       clang_isExpression },
 #if CINDEX_VERSION_MINOR >= 33
       { "functionInlined",
-        cursorToBoolObjCmd,		clang_Cursor_isFunctionInlined },
+        cursorToBoolObjCmd,             clang_Cursor_isFunctionInlined },
 #endif
       { "invalid",
-        cursorToKindToBoolObjCmd,	clang_isInvalid },
+        cursorToKindToBoolObjCmd,       clang_isInvalid },
       { "null",
-        cursorToBoolObjCmd,		clang_Cursor_isNull },
+        cursorToBoolObjCmd,             clang_Cursor_isNull },
       { "valid",
         cursorToBoolObjCmd},
 #if CINDEX_VERSION_MINOR >= 33
       { "macroFunctionLike",
-        cursorToBoolObjCmd,		clang_Cursor_isMacroFunctionLike },
+        cursorToBoolObjCmd,             clang_Cursor_isMacroFunctionLike },
       { "macroBuiltin",
-        cursorToBoolObjCmd,		clang_Cursor_isMacroBuiltin },
+        cursorToBoolObjCmd,             clang_Cursor_isMacroBuiltin },
 #endif
       { "objCOptional",
-        cursorToBoolObjCmd,		clang_Cursor_isObjCOptional },
+        cursorToBoolObjCmd,             clang_Cursor_isObjCOptional },
       { "preprocessing",
-        cursorToKindToBoolObjCmd,	clang_isPreprocessing },
+        cursorToKindToBoolObjCmd,       clang_isPreprocessing },
       { "reference",
-        cursorToKindToBoolObjCmd,	clang_isReference },
+        cursorToKindToBoolObjCmd,       clang_isReference },
       { "statement",
-        cursorToKindToBoolObjCmd,	clang_isStatement },
+        cursorToKindToBoolObjCmd,       clang_isStatement },
       { "translationUnit",
-        cursorToKindToBoolObjCmd,	clang_isTranslationUnit },
+        cursorToKindToBoolObjCmd,       clang_isTranslationUnit },
       { "variadic",
-        cursorToBoolObjCmd,		clang_Cursor_isVariadic },
+        cursorToBoolObjCmd,             clang_Cursor_isVariadic },
       { "virtualBase",
-        cursorToBoolObjCmd,		clang_isVirtualBase },
+        cursorToBoolObjCmd,             clang_isVirtualBase },
       { NULL }
    };
    createAndExportCommands(interp, "cindex::cursor::is::%s", cursorIsCmdTable);
@@ -6946,7 +6955,7 @@ int Cindex_Init(Tcl_Interp *interp)
 
    static Command typeCmdTable[] = {
       { "alignof",
-        typeToLayoutLongLongObjCmd,	
+        typeToLayoutLongLongObjCmd,     
         clang_Type_getAlignOf },
       { "argType",
         typeUnsignedToTypeObjCmd,
