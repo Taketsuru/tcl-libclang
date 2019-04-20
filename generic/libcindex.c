@@ -44,9 +44,25 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _MSC_VER
+#include <intrin.h>
+#else
 #include <strings.h>
+#endif
 
 //------------------------------------------------------------------ utilities
+
+static int findFirstSet(unsigned value)
+{
+#ifdef _MSC_VER
+   int i;
+   _BitScanReverse(&i, value);
+#else
+   int i = ffs(value) - 1;
+#endif
+
+   return i;
+}
 
 static unsigned long cstringHash(const char *str)
 {
@@ -72,9 +88,9 @@ static Tcl_Obj *convertCXStringToObj(CXString str)
 #if CINDEX_VERSION_MINOR >= 32
 static Tcl_Obj *convertCXStringSetToObj(CXStringSet *strset)
 {
-   Tcl_Obj    *result = Tcl_NewObj();
+   Tcl_Obj *result = Tcl_NewObj();
    for (int i = 0; i < strset->Count; i++) {
-      const char *cstr   = clang_getCString(strset->Strings[i]);
+      const char *cstr = clang_getCString(strset->Strings[i]);
       Tcl_ListObjAppendElement(NULL, result, Tcl_NewStringObj(cstr, -1));
    }
    clang_disposeStringSet(strset);
@@ -500,7 +516,7 @@ static int bitMaskToString(Tcl_Interp *interp,
    int n = i;
 
    while (value != 0 && status == TCL_OK) {
-      int i = ffs(value) - 1;
+      int i = findFirstSet(value);
       if (n <= i || options[i].mask != 0) {
          Tcl_SetObjResult(interp,
                           Tcl_ObjPrintf("unknown mask value: 0x%x", 1U << i));
@@ -6424,6 +6440,9 @@ cursorGetSpellingNameRange(CXCursor cursor, unsigned index)
    return clang_Cursor_getSpellingNameRange(cursor, index, 0);
 }
 
+#ifdef _MSC_VER
+__declspec(dllexport)
+#endif
 int Cindex_Init(Tcl_Interp *interp)
 {
    if (Tcl_InitStubs(interp, "8.5", 0) == NULL) {
@@ -7077,7 +7096,7 @@ int Cindex_Init(Tcl_Interp *interp)
 
       unsigned v = mask;
       while (v != 0) {
-         int b = ffs(v) - 1;
+         int b = findFirstSet(v);
          Tcl_ListObjAppendElement
             (NULL, value, Tcl_NewStringObj(parseFlags[b], -1));
          v -= 1U << b;
